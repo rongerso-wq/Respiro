@@ -1,0 +1,2136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Respiro — Daily Breathing Check</title>
+
+  <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+    :root {
+      --bg:         #EDF4F7;
+      --surface:    #FFFFFF;
+      --ink:        #14181C;
+      --ink-soft:   #5C626A;
+      --line:       #D4E4EC;
+      --calm:       #0F6B47;  --calm-bg:    #E2F3EA;
+      --caution:    #B07D10;  --caution-bg: #FFF5DC;
+      --alarm:      #C62B2B;  --alarm-bg:   #FCE8E8;
+      --hero-1:     #1A6FA8;
+      --hero-2:     #2A8FC4;
+      --hero-3:     #3AADD4;
+      --rc:         24px;
+      --sh:         0 4px 16px rgba(20,24,28,.07), 0 1px 3px rgba(20,24,28,.05);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+      -webkit-text-size-adjust: 100%;
+    }
+
+    .wrap { max-width: 480px; margin: 0 auto; padding-bottom: 100px; }
+
+    @media (min-width: 520px) {
+      body { background: #B4CAD8; display: flex; justify-content: center; padding: 32px 16px; }
+      .wrap { background: var(--bg); border-radius: 36px; overflow: hidden; box-shadow: 0 28px 72px rgba(20,24,28,.22); }
+    }
+
+    button, a { touch-action: manipulation; -webkit-tap-highlight-color: transparent; cursor: pointer; }
+
+    /* Animations */
+    @keyframes slideDown { from { opacity:0; transform:translateY(-10px); } to { opacity:1; transform:translateY(0); } }
+    .sd { animation: slideDown .32s cubic-bezier(.4,0,.2,1) both; }
+
+    @keyframes fadeIn  { from { opacity:0; } to { opacity:1; } }
+    @keyframes slideUp { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:translateY(0); } }
+    .fi { animation: fadeIn  .2s ease both; }
+    .su { animation: slideUp .32s cubic-bezier(.4,0,.2,1) both; }
+
+    @keyframes ctaPulse {
+      0%,100% { box-shadow: 0 10px 32px rgba(26,111,168,.28), 0 0 0 0   rgba(26,111,168,.40); }
+      50%      { box-shadow: 0 10px 32px rgba(26,111,168,.28), 0 0 0 14px rgba(26,111,168,.0);  }
+    }
+    .pulse { animation: ctaPulse 2.4s ease-in-out infinite; }
+
+    @keyframes pacerInhale { from { transform:scale(1);    } to { transform:scale(1.65); } }
+    @keyframes pacerExhale { from { transform:scale(1.65); } to { transform:scale(1);    } }
+    .pi { animation: pacerInhale 2s ease-in-out forwards; }
+    .pe { animation: pacerExhale 4s ease-in-out forwards; }
+
+    .sbtn:active { transform: scale(0.985); }
+
+    /* Bottom nav — glassmorphism */
+    .nav-bar {
+      position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
+      width: 100%; max-width: 480px;
+      background: rgba(255,255,255,.88);
+      backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+      border-top: 1px solid rgba(212,228,236,.7);
+      display: flex; align-items: flex-end;
+      box-shadow: 0 -6px 24px rgba(20,24,28,.10);
+      z-index: 50;
+      padding-bottom: env(safe-area-inset-bottom, 0);
+    }
+    .nav-btn {
+      flex: 1; display: flex; flex-direction: column; align-items: center;
+      justify-content: center; gap: 4px;
+      padding: 10px 4px 13px;
+      background: none; border: none;
+      font-size: 14px; font-weight: 700; letter-spacing: .02em;
+      font-family: inherit;
+      color: var(--ink-soft);
+      transition: color .15s;
+    }
+    .nav-btn.active { color: var(--hero-1); }
+    .nav-btn.active svg { filter: drop-shadow(0 2px 4px rgba(26,111,168,.3)); }
+
+    /* Report screen */
+    .report-row { display: flex; align-items: center; justify-content: space-between; padding: 13px 0; border-bottom: 1px solid var(--line); }
+    .report-row:last-child { border-bottom: none; }
+
+    /* Screen transitions */
+    @keyframes slideInRight { from { opacity:0; transform:translateX(40px); } to { opacity:1; transform:translateX(0); } }
+    @keyframes slideInLeft  { from { opacity:0; transform:translateX(-40px); } to { opacity:1; transform:translateX(0); } }
+    @keyframes slideInUp    { from { opacity:0; transform:translateY(30px); } to { opacity:1; transform:translateY(0); } }
+    .screen-right { animation: slideInRight .28s cubic-bezier(.4,0,.2,1) both; }
+    .screen-left  { animation: slideInLeft  .28s cubic-bezier(.4,0,.2,1) both; }
+    .screen-up    { animation: slideInUp    .28s cubic-bezier(.4,0,.2,1) both; }
+
+    /* Onboarding */
+    .ob-input {
+      width: 100%; font-size: 22px; font-weight: 700; color: var(--ink);
+      border: none; border-bottom: 2.5px solid var(--hero-2);
+      padding: 10px 0; background: transparent; outline: none;
+      font-family: inherit;
+    }
+    .ob-input::placeholder { color: var(--line); font-weight: 500; }
+    .ob-input:focus { border-color: var(--hero-1); }
+
+    /* History calendar */
+    .cal-day {
+      aspect-ratio: 1; border-radius: 10px; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 3px; cursor: default;
+      border: 1px solid transparent; transition: transform .1s;
+      background: none; padding: 0; font-family: inherit;
+    }
+    .cal-day.has-data { cursor: pointer; }
+    .cal-day.has-data:active { transform: scale(.93); }
+    .cal-day:focus-visible { outline: 2px solid var(--hero-1); outline-offset: 1px; }
+
+    @keyframes breatheLogo {
+      0%,100% { box-shadow: 0 4px 14px rgba(26,111,168,.32), 0 0 0 0   rgba(26,111,168,.22); }
+      50%      { box-shadow: 0 4px 14px rgba(26,111,168,.32), 0 0 0 8px rgba(26,111,168,.0);  }
+    }
+    .logo-tile { animation: breatheLogo 3s ease-in-out infinite; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .sd,.fi,.su,.pulse,.pi,.pe,.logo-tile { animation:none!important; transition:none!important; }
+    }
+    @media print {
+      @page { margin: 1.8cm; size: A4; }
+      body  { background: white !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .nav-bar, .no-print, [role="dialog"] { display: none !important; }
+      .wrap { max-width: 100% !important; border-radius: 0 !important; box-shadow: none !important; padding-bottom: 0 !important; }
+      /* Keep background colours in card blocks */
+      * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect, useRef } = React;
+
+/* ─── Icons ──────────────────────────────────────────────────────────────── */
+const Lungs = ({sz=24,c='currentColor',sw=1.8}) => (
+  <svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round">
+    <line x1="12" y1="3" x2="12" y2="9"/>
+    <path d="M12 9C10 9 7 9.5 6 11"/><path d="M12 9C14 9 17 9.5 18 11"/>
+    <path d="M6 11C3 12 2 14.5 2 17.5C2 20.5 4 22 6.5 21C9 20 10.5 17.5 11 14.5L11 9"/>
+    <path d="M18 11C21 12 22 14.5 22 17.5C22 20.5 20 22 17.5 21C15 20 13.5 17.5 13 14.5L13 9"/>
+  </svg>
+);
+const Check = ({sz=24,c='currentColor'}) => (
+  <svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="4,13 9,18 20,7"/>
+  </svg>
+);
+const Warn = ({sz=24,c='currentColor'}) => (
+  <svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+    <line x1="12" y1="9" x2="12" y2="13"/><circle cx="12" cy="17" r="1" fill={c} stroke="none"/>
+  </svg>
+);
+const Urgent = ({sz=24,c='currentColor'}) => (
+  <svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2" strokeLinecap="round">
+    <circle cx="12" cy="12" r="10"/>
+    <line x1="12" y1="7" x2="12" y2="13"/><circle cx="12" cy="17" r="1" fill={c} stroke="none"/>
+  </svg>
+);
+const Phone = ({sz=24,c='white'}) => (
+  <svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.81a19.79 19.79 0 01-3.07-8.67A2 2 0 012 1h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L6.09 8.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z"/>
+  </svg>
+);
+const CloseX = ({sz=20,c='white'}) => (
+  <svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2.5" strokeLinecap="round">
+    <line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/>
+  </svg>
+);
+const PillIcon = ({sz=24,c='currentColor'}) => (
+  <svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M10.5 20.5L3.5 13.5a4.95 4.95 0 117-7l7 7a4.95 4.95 0 01-7 7z"/>
+    <line x1="8.5" y1="8.5" x2="15.5" y2="15.5"/>
+  </svg>
+);
+const ClockIcon = ({sz=24,c='currentColor'}) => (
+  <svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="10"/>
+    <polyline points="12,6 12,12 16,14"/>
+  </svg>
+);
+const FileIcon = ({sz=24,c='currentColor'}) => (
+  <svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+    <polyline points="14,2 14,8 20,8"/>
+    <line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
+    <polyline points="10,9 9,9 8,9"/>
+  </svg>
+);
+const HomeIcon = ({sz=24,c='currentColor'}) => (
+  <svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
+    <polyline points="9,22 9,12 15,12 15,22"/>
+  </svg>
+);
+
+/* ─── Status config ──────────────────────────────────────────────────────── */
+const STATUS = {
+  green:  { label:'Good / As Usual',          sub:'Breathing feels normal',        bc:'var(--calm)',    bg:'var(--calm-bg)',    tc:'var(--calm)',    Icon:Check  },
+  yellow: { label:'Not So Good',               sub:'More breathless than usual',    bc:'var(--caution)', bg:'var(--caution-bg)', tc:'var(--caution)', Icon:Warn   },
+  red:    { label:"Emergency / Can't Breathe", sub:'Severe difficulty — act now',   bc:'var(--alarm)',   bg:'var(--alarm-bg)',   tc:'var(--alarm)',   Icon:Urgent },
+};
+
+/* ─── Demo medication data ───────────────────────────────────────────────── */
+const MEDS = [
+  { name:'Symbicort Inhaler', type:'Maintenance', time:'8:00 AM', taken:true,  tip:'Shake well. Exhale fully, then inhale slowly and deeply for 3–5 seconds.' },
+  { name:'Ventolin (Rescue)', type:'As needed',   time:'As needed', taken:false, tip:'Use when breathless. Shake, exhale, inhale slowly, hold breath 10 sec.' },
+  { name:'Symbicort Inhaler', type:'Maintenance', time:'8:00 PM', taken:false, tip:'Evening dose — same technique as morning. Rinse mouth after use.' },
+];
+
+/* ─── Check-in persistence ───────────────────────────────────────────────── */
+function dateKey(d) {
+  d = d || new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function loadCheckIns() {
+  try { return JSON.parse(localStorage.getItem('resp_checkins') || '[]'); } catch(e) { return []; }
+}
+function saveCheckInLS(status) {
+  const all = loadCheckIns();
+  const key = dateKey();
+  const idx = all.findIndex(c => c.dateKey === key);
+  const entry = { dateKey: key, status, ts: new Date().toISOString() };
+  if (idx >= 0) all[idx] = entry; else all.push(entry);
+  let saved = true;
+  try { localStorage.setItem('resp_checkins', JSON.stringify(all)); } catch(e) { saved = false; }
+  return { data: all, saved };
+}
+
+/* ─── Build 30-day history (real data overlaid on demo fill) ─────────────── */
+const DEMO_STATUSES = ['green','green','green','yellow','green','green','green','yellow',
+                       'green','red','green','green','yellow','green','green','green',
+                       'green','yellow','green','green',null,'green','green','yellow',
+                       'green','red','green','green','green','yellow'];
+const DEMO_NOTES = {
+  red:    ['Called 911 — severe exacerbation','Very breathless, used rescue inhaler × 3','ER visit — O₂ sat 88%'],
+  yellow: ['Used rescue inhaler','Breathless after walking upstairs','Tightness in chest, resolved later',
+           'Coughing more than usual','Breathless climbing stairs'],
+  green:  ['Felt good today','Morning walk completed','Good breathing day','Exercised 20 min'],
+};
+function buildHistoryData(checkins) {
+  const map = {};
+  checkins.forEach(c => { map[c.dateKey] = c; });
+  const today = new Date(); today.setHours(0,0,0,0);
+  return DEMO_STATUSES.map((demoStatus, i) => {
+    const d = new Date(today); d.setDate(today.getDate() - (29 - i));
+    const key = dateKey(d);
+    const real = map[key];
+    const status = real ? real.status : demoStatus;
+    const note = real
+      ? `Check-in logged at ${new Date(real.ts).toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'})}`
+      : (demoStatus ? DEMO_NOTES[demoStatus][i % DEMO_NOTES[demoStatus].length] : null);
+    return { date:d, dateStr:d.toLocaleDateString('en-US',{month:'short',day:'numeric'}),
+             dayNum:d.getDate(), dateKey:key, status, note, isReal:!!real };
+  });
+}
+
+/* ─── Demo 30-day report data ────────────────────────────────────────────── */
+const REPORT_DATA = {
+  period: 'May 16 – June 15, 2025',
+  patient: { name:'Dorothy Hines', dob:'March 4, 1948', physician:'Dr. Michael Stern' },
+  checkIns: { total:28, green:18, yellow:8, red:2, missed:2 },
+  meds: { adherence:86, dosesTaken:48, dosesTotal:56 },
+  breathing: [
+    { date:'Jun 10', status:'red',    note:'Called 911 — severe exacerbation' },
+    { date:'Jun 7',  status:'yellow', note:'Used rescue inhaler ×2, improved' },
+    { date:'Jun 3',  status:'yellow', note:'Breathless after walking upstairs' },
+    { date:'May 28', status:'red',    note:'ER visit — O₂ sat 88%' },
+    { date:'May 22', status:'yellow', note:'Increased breathlessness, resolved' },
+  ],
+  exercises: 14,
+};
+
+/* ════════════════════════════════════════════════════
+   PHASE 1 — HEADER
+════════════════════════════════════════════════════ */
+function Header({ patientName = 'Dorothy' }) {
+  const today = new Date().toLocaleDateString('en-US',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+  return (
+    <div style={{background:'var(--surface)',position:'relative',overflow:'hidden',
+                 borderBottom:'1.5px solid var(--line)',
+                 boxShadow:'0 2px 16px rgba(20,24,28,.06)'}}>
+
+      {/* Top gradient accent bar */}
+      <div style={{height:4,background:'linear-gradient(90deg,var(--hero-1) 0%,var(--hero-2) 55%,var(--hero-3) 100%)'}}/>
+
+      {/* Background lungs watermark */}
+      <div style={{position:'absolute',right:-18,bottom:-14,opacity:.04,pointerEvents:'none',transform:'rotate(-8deg)'}}>
+        <Lungs sz={190} c="var(--hero-1)" sw={.8}/>
+      </div>
+
+      <div style={{padding:'20px 22px 20px',position:'relative'}}>
+
+        {/* ── Brand row ── */}
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:18}}>
+          <div style={{display:'flex',alignItems:'center',gap:12}}>
+            {/* Breathing logo tile */}
+            <div className="logo-tile" style={{width:46,height:46,borderRadius:15,flexShrink:0,
+                         background:'linear-gradient(140deg,var(--hero-1),var(--hero-3))',
+                         display:'flex',alignItems:'center',justifyContent:'center'}}>
+              <Lungs sz={26} c="white" sw={1.7}/>
+            </div>
+            <div>
+              {/* Gradient wordmark */}
+              <h1 style={{fontSize:26,fontWeight:900,letterSpacing:'-0.3px',lineHeight:1,
+                          background:'linear-gradient(120deg,var(--hero-1) 0%,var(--hero-3) 100%)',
+                          WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',
+                          backgroundClip:'text'}}>
+                Respiro
+              </h1>
+              <p style={{fontSize:12,fontWeight:600,color:'var(--ink-soft)',letterSpacing:'0.04em',marginTop:2}}>
+                COPD Daily Care
+              </p>
+            </div>
+          </div>
+          {/* Streak badge */}
+          <div style={{display:'flex',alignItems:'center',gap:5,
+                       background:'var(--calm-bg)',borderRadius:10,padding:'6px 12px',
+                       border:'1px solid rgba(15,107,71,.2)'}}>
+            <span style={{fontSize:16}}>🔥</span>
+            <div>
+              <p style={{fontSize:15,fontWeight:900,color:'var(--calm)',lineHeight:1}}>12</p>
+              <p style={{fontSize:13,fontWeight:700,color:'var(--calm)',opacity:.8,lineHeight:1,marginTop:1}}>day streak</p>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Divider ── */}
+        <div style={{height:1,background:'var(--line)',marginBottom:18}}/>
+
+        {/* ── Greeting ── */}
+        <div style={{display:'flex',alignItems:'flex-start',gap:14,marginBottom:18}}>
+          <div style={{width:54,height:54,borderRadius:18,flexShrink:0,
+                       background:'linear-gradient(140deg,rgba(26,111,168,.10),rgba(58,173,212,.07))',
+                       border:'1.5px solid rgba(26,111,168,.14)',
+                       display:'flex',alignItems:'center',justifyContent:'center',fontSize:26}}>
+            👋
+          </div>
+          <div style={{flex:1}}>
+            <p style={{fontSize:14,fontWeight:600,color:'var(--ink-soft)',marginBottom:2}}>Good Morning</p>
+            <p style={{fontSize:28,fontWeight:800,color:'var(--ink)',letterSpacing:'-0.3px',lineHeight:1.1,marginBottom:4}}>
+              {patientName}
+            </p>
+            <p style={{fontSize:14,fontWeight:500,color:'var(--ink-soft)'}}>{today}</p>
+          </div>
+        </div>
+
+        {/* ── Stats strip ── */}
+        <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10}}>
+          {[
+            { val:'12',  label:'Day Streak',    color:'var(--hero-1)', bg:'rgba(26,111,168,.08)',  border:'rgba(26,111,168,.18)'  },
+            { val:'86%', label:'Med Adherence', color:'var(--calm)',   bg:'var(--calm-bg)',         border:'rgba(15,107,71,.18)'   },
+            { val:'14',  label:'Exercises',     color:'var(--hero-2)', bg:'rgba(42,143,196,.08)',  border:'rgba(42,143,196,.20)'  },
+          ].map(({ val, label, color, bg, border }) => (
+            <div key={label} style={{background:bg,borderRadius:14,padding:'11px 8px',
+                                     textAlign:'center',border:`1px solid ${border}`}}>
+              <p style={{fontSize:22,fontWeight:900,color,lineHeight:1}}>{val}</p>
+              <p style={{fontSize:14,fontWeight:600,color:'var(--ink-soft)',marginTop:3,lineHeight:1.3}}>{label}</p>
+            </div>
+          ))}
+        </div>
+
+      </div>
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════
+   PHASE 2 — CHECK-IN CARD
+════════════════════════════════════════════════════ */
+function CheckInCard({ selected, onSelect, onEmergency }) {
+  const timeNow = new Date().toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit'});
+  const [confirmRed, setConfirmRed] = useState(false);
+  const confirmTimer = useRef(null);
+
+  function handleButtonClick(k) {
+    if (k === 'red') {
+      if (!confirmRed) {
+        setConfirmRed(true);
+        clearTimeout(confirmTimer.current);
+        confirmTimer.current = setTimeout(() => setConfirmRed(false), 5000);
+      } else {
+        clearTimeout(confirmTimer.current);
+        setConfirmRed(false);
+        onSelect('red');
+        onEmergency();
+      }
+    } else {
+      setConfirmRed(false);
+      onSelect(k);
+    }
+  }
+
+  return (
+    <div style={{background:'var(--surface)',borderRadius:'var(--rc)',boxShadow:'var(--sh)',
+                 border:'1.5px solid var(--line)',overflow:'hidden'}}>
+      {/* Card header strip */}
+      <div style={{padding:'16px 18px 14px',
+                   background:'linear-gradient(135deg,rgba(26,111,168,.06) 0%,rgba(58,173,212,.03) 100%)',
+                   borderBottom:'1px solid var(--line)',
+                   display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+        <div style={{display:'flex',alignItems:'center',gap:10}}>
+          <div style={{width:36,height:36,borderRadius:11,flexShrink:0,
+                       background:'linear-gradient(140deg,var(--hero-1),var(--hero-3))',
+                       display:'flex',alignItems:'center',justifyContent:'center',
+                       boxShadow:'0 3px 8px rgba(26,111,168,.30)'}}>
+            <Lungs sz={20} c="white" sw={1.8}/>
+          </div>
+          <div>
+            <p style={{fontSize:17,fontWeight:800,color:'var(--ink)',lineHeight:1}}>Daily Check-In</p>
+            <p style={{fontSize:12,fontWeight:600,color:'var(--ink-soft)',marginTop:2}}>How is your breathing today?</p>
+          </div>
+        </div>
+        <span style={{fontSize:12,fontWeight:700,color:'var(--ink-soft)',
+                      background:'var(--bg)',borderRadius:8,padding:'4px 9px',border:'1px solid var(--line)'}}>
+          {timeNow}
+        </span>
+      </div>
+
+      {/* Buttons */}
+      <div style={{padding:'16px 18px 18px',display:'flex',flexDirection:'column',gap:11}}>
+        {['green','yellow','red'].map(k => {
+          const s = STATUS[k];
+          const isSel = selected === k;
+          const iconC = isSel ? 'white' : s.tc;
+          return (
+            <button key={k} className="sbtn"
+                    aria-pressed={isSel}
+                    aria-label={`${s.label}: ${s.sub}${k==='red' ? ' — tap twice to confirm' : ''}`}
+                    onClick={() => handleButtonClick(k)}
+                    style={{width:'100%',minHeight:76,background:s.bg,
+                            border:isSel ? `2.5px solid ${s.bc}` : `1.5px solid ${s.bc}28`,
+                            borderRadius:18,padding:'14px 16px',
+                            display:'flex',alignItems:'center',gap:14,
+                            boxShadow:isSel ? `0 4px 16px ${s.bc}30, 0 0 0 3px ${s.bc}18` : `0 2px 6px rgba(20,24,28,.04)`,
+                            transition:'box-shadow .2s,border .1s,transform .08s',textAlign:'left'}}>
+              <div style={{width:48,height:48,borderRadius:15,flexShrink:0,
+                           background:isSel ? s.bc : `${s.bc}22`,
+                           display:'flex',alignItems:'center',justifyContent:'center',
+                           boxShadow:isSel ? `0 4px 10px ${s.bc}40` : 'none',
+                           transition:'background .15s,box-shadow .15s'}}>
+                <s.Icon sz={24} c={iconC}/>
+              </div>
+              <div style={{flex:1}}>
+                <p style={{fontSize:19,fontWeight:800,color:s.tc,lineHeight:1.2}}>{s.label}</p>
+                <p style={{fontSize:13,fontWeight:500,color:'var(--ink-soft)',marginTop:3}}>{s.sub}</p>
+              </div>
+              <div style={{width:30,height:30,borderRadius:'50%',flexShrink:0,
+                           background:isSel ? s.bc : `${s.bc}18`,
+                           border:isSel ? 'none' : `1.5px solid ${s.bc}40`,
+                           display:'flex',alignItems:'center',justifyContent:'center',
+                           transition:'all .15s'}}>
+                {isSel
+                  ? <Check sz={16} c="white"/>
+                  : <div style={{width:8,height:8,borderRadius:'50%',background:s.bc,opacity:.5}}/>
+                }
+              </div>
+            </button>
+          );
+        })}
+        {confirmRed && (
+          <div className="sd" style={{margin:'4px 0 2px',padding:'14px 16px',
+                background:'var(--alarm-bg)',borderRadius:14,border:'1.5px solid var(--alarm)',
+                display:'flex',flexDirection:'column',gap:10}}>
+            <p style={{fontSize:15,fontWeight:700,color:'var(--alarm)',textAlign:'center'}}>
+              Tap "Yes, Emergency" to confirm
+            </p>
+            <div style={{display:'flex',gap:10}}>
+              <button onClick={() => { clearTimeout(confirmTimer.current); setConfirmRed(false); }}
+                style={{flex:1,height:48,borderRadius:12,border:'1.5px solid var(--alarm)',
+                        background:'white',color:'var(--alarm)',fontSize:15,fontWeight:700,
+                        fontFamily:'inherit',cursor:'pointer'}}>
+                Cancel
+              </button>
+              <button onClick={() => { clearTimeout(confirmTimer.current); setConfirmRed(false); onSelect('red'); onEmergency(); }}
+                style={{flex:2,height:48,borderRadius:12,border:'none',
+                        background:'var(--alarm)',color:'white',fontSize:15,fontWeight:800,
+                        fontFamily:'inherit',cursor:'pointer'}}>
+                Yes, Emergency
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════
+   PHASE 3a — RESPONSE PANEL
+════════════════════════════════════════════════════ */
+function ResponsePanel({ status, doctorPhone }) {
+  const isGreen = status === 'green';
+  const bc  = isGreen ? 'var(--calm)'    : 'var(--caution)';
+  const bg  = isGreen ? 'var(--calm-bg)' : 'var(--caution-bg)';
+  const steps = isGreen
+    ? ['Continue your maintenance inhaler as scheduled.',
+       'Stay hydrated — aim for 6–8 glasses today.',
+       'Light walking or gentle activity is fine.']
+    : ['Use your rescue inhaler right now.',
+       'Sit upright — do not lie flat.',
+       'Monitor breathing for 15 minutes. If SpO₂ drops below 88%, call 911.',
+       'No improvement after 20 minutes? Call your doctor.'];
+  return (
+    <div className="sd" style={{background:'var(--surface)',borderRadius:18,overflow:'hidden',
+                                 border:`1.5px solid ${bc}28`,
+                                 boxShadow:`0 4px 20px ${bc}18`}}>
+      {/* Colored header */}
+      <div style={{background:bg,padding:'14px 16px',
+                   borderBottom:`1px solid ${bc}28`,
+                   display:'flex',alignItems:'center',gap:12}}>
+        <div style={{width:42,height:42,borderRadius:13,flexShrink:0,background:bc,
+                     display:'flex',alignItems:'center',justifyContent:'center',
+                     boxShadow:`0 4px 10px ${bc}40`}}>
+          {isGreen ? <Check sz={22} c="white"/> : <Warn sz={22} c="white"/>}
+        </div>
+        <div>
+          <p style={{fontSize:17,fontWeight:800,color:bc,lineHeight:1.1}}>
+            {isGreen ? 'Great — keep it up!' : 'Action needed now'}
+          </p>
+          <p style={{fontSize:13,fontWeight:500,color:'var(--ink-soft)',marginTop:2}}>
+            {isGreen ? 'Your breathing is on track today' : 'Follow these steps immediately'}
+          </p>
+        </div>
+      </div>
+      {/* Steps */}
+      <div style={{padding:'14px 16px 16px'}}>
+        {steps.map((step,i) => (
+          <div key={i} style={{display:'flex',alignItems:'flex-start',gap:12,
+                               marginBottom:i<steps.length-1?10:0}}>
+            <div style={{width:24,height:24,borderRadius:'50%',flexShrink:0,
+                         background:bg,border:`1.5px solid ${bc}50`,
+                         display:'flex',alignItems:'center',justifyContent:'center',marginTop:1}}>
+              <span style={{fontSize:12,fontWeight:800,color:bc}}>{i+1}</span>
+            </div>
+            <p style={{fontSize:15,fontWeight:500,color:'var(--ink)',lineHeight:1.55,flex:1}}>{step}</p>
+          </div>
+        ))}
+        {!isGreen && (
+          <div>
+            <a href={`tel:${doctorPhone || ''}`}
+               style={{display:'flex',alignItems:'center',justifyContent:'center',gap:10,
+                       marginTop:14,width:'100%',minHeight:54,background:'var(--caution)',
+                       color:'white',borderRadius:14,textDecoration:'none',
+                       fontSize:17,fontWeight:800,
+                       boxShadow:'0 6px 16px rgba(176,125,16,.35)'}}>
+              <Phone sz={20}/>Call My Doctor
+            </a>
+            {!doctorPhone && (
+              <p style={{fontSize:12,color:'var(--ink-soft)',textAlign:'center',marginTop:6,fontWeight:500}}>
+                Add your doctor's phone in Settings to enable quick-dial
+              </p>
+            )}
+            <p style={{fontSize:12,color:'var(--ink-soft)',marginTop:10,lineHeight:1.55,padding:'0 2px'}}>
+              <strong>SpO₂ note:</strong> For COPD, 88–92% may be your normal range — targeting 95%+ can be harmful. Ask your doctor for your personal target.
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════
+   PHASE 3b — EMERGENCY MODAL
+════════════════════════════════════════════════════ */
+function EmergencyModal({ onClose, emergencyContact }) {
+  const btn911Ref = useRef(null);
+  useEffect(() => {
+    if (btn911Ref.current) btn911Ref.current.focus();
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
+
+  return (
+    <div className="fi" role="alertdialog" aria-modal="true" aria-labelledby="em-title"
+         style={{position:'fixed',inset:0,zIndex:60,background:'rgba(10,15,20,.88)',
+                 display:'flex',alignItems:'center',justifyContent:'center',padding:'20px 18px'}}>
+      <div className="su" style={{background:'var(--surface)',borderRadius:28,padding:'28px 22px 22px',
+                                  width:'100%',maxWidth:360,boxShadow:'0 24px 64px rgba(0,0,0,.42)'}}>
+        <div style={{width:68,height:68,borderRadius:'50%',background:'var(--alarm)',
+                     display:'flex',alignItems:'center',justifyContent:'center',
+                     margin:'0 auto 20px',boxShadow:'0 8px 24px rgba(198,43,43,.40)'}}>
+          <svg width="30" height="30" viewBox="0 0 24 24" fill="none">
+            <line x1="12" y1="5" x2="12" y2="14" stroke="white" strokeWidth="3" strokeLinecap="round"/>
+            <circle cx="12" cy="18.5" r="1.8" fill="white"/>
+          </svg>
+        </div>
+        <h2 id="em-title" style={{fontSize:24,fontWeight:900,color:'var(--alarm)',textAlign:'center',marginBottom:8}}>
+          Call 911 Immediately
+        </h2>
+        <p style={{fontSize:13,fontWeight:600,color:'var(--ink-soft)',textAlign:'center',marginBottom:16,lineHeight:1.5}}>
+          Red zone triggers: SpO₂ below 88% · blue lips · can't speak a sentence · rescue inhaler not working
+        </p>
+        <div style={{fontSize:17,fontWeight:500,color:'var(--ink)',lineHeight:1.75,textAlign:'center',marginBottom:20}}>
+          <p>Sit upright — do not lie flat.</p>
+          <p>Use your rescue inhaler now.</p>
+          <p>Stay where you are and wait for help.</p>
+        </div>
+        <a ref={btn911Ref} href="tel:911"
+           style={{display:'flex',alignItems:'center',justifyContent:'center',gap:12,
+                   width:'100%',minHeight:72,background:'var(--alarm)',color:'white',
+                   borderRadius:20,textDecoration:'none',fontSize:22,fontWeight:900,
+                   boxShadow:'0 10px 28px rgba(198,43,43,.45)',marginBottom:10}}>
+          <Phone sz={26}/>Call 911
+        </a>
+        {emergencyContact && emergencyContact.phone && (
+          <a href={`tel:${emergencyContact.phone}`}
+             style={{display:'flex',alignItems:'center',justifyContent:'center',gap:12,
+                     width:'100%',minHeight:64,background:'var(--caution-bg)',color:'var(--caution)',
+                     borderRadius:20,textDecoration:'none',fontSize:18,fontWeight:800,
+                     border:'2px solid var(--caution)',marginBottom:14}}>
+            <Phone sz={22}/>{emergencyContact.name ? `Call ${emergencyContact.name}` : 'Call Emergency Contact'}
+          </a>
+        )}
+        <div style={{background:'var(--calm-bg)',borderRadius:14,padding:'12px 14px',
+                     display:'flex',alignItems:'center',gap:10,marginBottom:14}}>
+          <Lungs sz={22} c="var(--calm)" sw={1.8}/>
+          <p style={{fontSize:14,fontWeight:600,color:'var(--calm)',lineHeight:1.5,flex:1}}>
+            While waiting: breathe in 2 sec → purse lips → breathe out slowly 4 sec
+          </p>
+        </div>
+        <button onClick={onClose}
+                style={{width:'100%',minHeight:52,background:'transparent',border:'1.5px solid var(--line)',
+                        borderRadius:15,color:'var(--ink-soft)',fontSize:16,fontWeight:600}}>
+          I've Called — Dismiss
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════
+   PHASE 4 — MEDICATION SECTION
+════════════════════════════════════════════════════ */
+function RescueCounter() {
+  const todayKey = new Date().toISOString().slice(0,10);
+  const storageKey = `resp_rescue_${todayKey}`;
+  const [puffs, setPuffs] = useState(() => {
+    try { return parseInt(localStorage.getItem(storageKey)||'0',10); } catch(e) { return 0; }
+  });
+  function addPuff() {
+    const n = puffs + 1;
+    setPuffs(n);
+    try { localStorage.setItem(storageKey, String(n)); } catch(e) {}
+  }
+  const warn = puffs > 2;
+  return (
+    <div style={{margin:'0 14px 10px',padding:'10px 14px',borderRadius:14,
+                 background: warn?'var(--caution-bg)':'rgba(26,111,168,.06)',
+                 border:`1.5px solid ${warn?'var(--caution)':'rgba(26,111,168,.12)'}`,
+                 display:'flex',alignItems:'center',gap:12}}>
+      <div style={{flex:1}}>
+        <p style={{fontSize:13,fontWeight:800,color:warn?'var(--caution)':'var(--ink)',lineHeight:1.2}}>
+          Rescue Inhaler Today
+        </p>
+        {warn
+          ? <p style={{fontSize:12,fontWeight:600,color:'var(--caution)',marginTop:3}}>
+              ⚠ {puffs} puffs — consider calling your doctor
+            </p>
+          : <p style={{fontSize:12,color:'var(--ink-soft)',marginTop:2}}>
+              {puffs} puff{puffs!==1?'s':''} today
+            </p>
+        }
+      </div>
+      <button onClick={addPuff} aria-label={`Add rescue puff, currently ${puffs}`}
+              style={{minWidth:56,minHeight:48,borderRadius:12,background:'var(--hero-1)',
+                      border:'none',color:'white',fontSize:22,fontWeight:900,cursor:'pointer',
+                      boxShadow:'0 3px 8px rgba(26,111,168,.30)'}}>
+        +
+      </button>
+    </div>
+  );
+}
+
+function MedSection() {
+  const [expandedIdx, setExpandedIdx] = useState(null);
+  const [takenState,  setTakenState]  = useState({ 0:true, 1:false, 2:false });
+
+  const takenCount  = Object.values(takenState).filter(Boolean).length;
+  const totalMaint  = MEDS.filter(m => m.type==='Maintenance').length;
+  const takenMaint  = MEDS.filter((m,i) => m.type==='Maintenance' && takenState[i]).length;
+  const pct         = Math.round((takenMaint / totalMaint) * 100);
+  const nextDue     = MEDS.find((m,i) => m.type==='Maintenance' && !takenState[i]);
+
+  return (
+    <div style={{background:'var(--surface)',borderRadius:'var(--rc)',boxShadow:'var(--sh)',
+                 border:'1.5px solid var(--line)',overflow:'hidden'}}>
+
+      {/* Card header */}
+      <div style={{padding:'14px 18px',
+                   background:'linear-gradient(135deg,rgba(26,111,168,.06),rgba(58,173,212,.03))',
+                   borderBottom:'1px solid var(--line)',
+                   display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+        <div style={{display:'flex',alignItems:'center',gap:10}}>
+          <div style={{width:36,height:36,borderRadius:11,flexShrink:0,
+                       background:'linear-gradient(140deg,var(--hero-1),var(--hero-3))',
+                       display:'flex',alignItems:'center',justifyContent:'center',
+                       boxShadow:'0 3px 8px rgba(26,111,168,.30)'}}>
+            <PillIcon sz={19} c="white"/>
+          </div>
+          <div>
+            <p style={{fontSize:17,fontWeight:800,color:'var(--ink)',lineHeight:1}}>Your Medications</p>
+            <p style={{fontSize:12,fontWeight:600,color: nextDue ? 'var(--caution)' : 'var(--calm)',marginTop:2}}>
+              {nextDue ? `Next: ${nextDue.name} · ${nextDue.time}` : '✓ All doses taken today'}
+            </p>
+          </div>
+        </div>
+        {/* Adherence ring */}
+        <div style={{textAlign:'center',flexShrink:0}}>
+          <div style={{width:46,height:46,borderRadius:'50%',position:'relative',
+                       background:`conic-gradient(var(--calm) ${pct}%, var(--line) 0)`,
+                       display:'flex',alignItems:'center',justifyContent:'center',
+                       boxShadow:`0 0 0 3px ${pct===100?'rgba(15,107,71,.15)':'transparent'}`}}>
+            <div style={{width:34,height:34,borderRadius:'50%',background:'white',
+                         display:'flex',alignItems:'center',justifyContent:'center'}}>
+              <span style={{fontSize:12,fontWeight:900,color:'var(--calm)'}}>{pct}%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Progress bar */}
+      <div style={{height:3,background:'var(--line)'}}>
+        <div style={{height:'100%',width:`${pct}%`,
+                     background:'linear-gradient(90deg,var(--hero-1),var(--calm))',
+                     transition:'width .4s ease',borderRadius:'0 2px 2px 0'}}/>
+      </div>
+
+      {/* Rescue inhaler counter */}
+      <RescueCounter/>
+
+      {/* Med list */}
+      <div style={{padding:'14px 18px 16px',display:'flex',flexDirection:'column',gap:2}}>
+        {MEDS.map((med, i) => {
+          const taken = !!takenState[i];
+          const isExp = expandedIdx === i;
+          const tileColor = taken ? 'var(--calm-bg)' : med.type==='As needed' ? 'rgba(26,111,168,.09)' : 'var(--caution-bg)';
+          const iconColor = taken ? 'var(--calm)' : med.type==='As needed' ? 'var(--hero-1)' : 'var(--caution)';
+          return (
+            <div key={i} style={{borderRadius:16,overflow:'hidden',
+                                  marginBottom: i < MEDS.length-1 ? 8 : 0,
+                                  border:`1px solid ${taken?'rgba(15,107,71,.2)':med.type==='As needed'?'rgba(26,111,168,.15)':'rgba(176,125,16,.2)'}`,
+                                  background: taken ? 'rgba(15,107,71,.03)' : 'transparent'}}>
+              <div style={{display:'flex',alignItems:'center',gap:12,padding:'12px 14px'}}>
+                <div style={{width:44,height:44,borderRadius:14,flexShrink:0,background:tileColor,
+                             display:'flex',alignItems:'center',justifyContent:'center',
+                             boxShadow: taken ? '0 2px 6px rgba(15,107,71,.2)' : 'none'}}>
+                  {taken ? <Check sz={22} c={iconColor}/>
+                         : med.type==='As needed' ? <PillIcon sz={20} c={iconColor}/>
+                         : <ClockIcon sz={20} c={iconColor}/>}
+                </div>
+                <div style={{flex:1,minWidth:0}}>
+                  <p style={{fontSize:16,fontWeight:800,color:'var(--ink)',lineHeight:1.2}}>{med.name}</p>
+                  <div style={{display:'flex',alignItems:'center',gap:6,marginTop:3}}>
+                    <span style={{fontSize:13,fontWeight:700,color:iconColor}}>
+                      {taken ? '✓ Taken' : med.time}
+                    </span>
+                    <span style={{fontSize:13,fontWeight:600,color:'var(--ink-soft)',
+                                  background:'var(--bg)',borderRadius:5,padding:'1px 6px',
+                                  border:'1px solid var(--line)'}}>
+                      {med.type}
+                    </span>
+                  </div>
+                </div>
+                <div style={{display:'flex',gap:7,flexShrink:0}}>
+                  <button onClick={() => setExpandedIdx(isExp ? null : i)}
+                          style={{minHeight:48,padding:'0 14px',borderRadius:12,
+                                  background: isExp ? 'var(--hero-1)' : 'rgba(26,111,168,.10)',
+                                  border:'none',fontSize:15,fontWeight:700,
+                                  color: isExp ? 'white' : 'var(--hero-1)'}}>
+                    Tip
+                  </button>
+                  {med.type !== 'As needed' && !taken && (
+                    <button onClick={() => setTakenState(p => ({...p,[i]:true}))}
+                            style={{minHeight:48,padding:'0 14px',borderRadius:12,
+                                    background:'var(--calm)',border:'none',
+                                    fontSize:15,fontWeight:700,color:'white',
+                                    boxShadow:'0 3px 8px rgba(15,107,71,.35)'}}>
+                      Done ✓
+                    </button>
+                  )}
+                </div>
+              </div>
+              {isExp && (
+                <div className="sd" style={{padding:'10px 14px 12px',
+                                            background:'linear-gradient(135deg,rgba(26,111,168,.07),rgba(58,173,212,.04))',
+                                            borderTop:'1px solid rgba(26,111,168,.12)'}}>
+                  <div style={{display:'flex',alignItems:'flex-start',gap:10}}>
+                    <Lungs sz={18} c="var(--hero-2)" sw={1.8}/>
+                    <p style={{fontSize:14,fontWeight:500,color:'var(--ink)',lineHeight:1.6}}>{med.tip}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════
+   PHASE 5a — PANIC BUTTON
+════════════════════════════════════════════════════ */
+function PanicButton({ onTap }) {
+  return (
+    <div style={{borderRadius:'var(--rc)',overflow:'hidden',
+                 boxShadow:'0 8px 32px rgba(26,111,168,.18)',
+                 background:'linear-gradient(140deg,var(--hero-1) 0%,var(--hero-2) 55%,var(--hero-3) 100%)',
+                 position:'relative'}}>
+      {/* Decorative bg elements */}
+      <div style={{position:'absolute',top:-30,right:-30,width:130,height:130,borderRadius:'50%',
+                   background:'rgba(255,255,255,.07)',pointerEvents:'none'}}/>
+      <div style={{position:'absolute',bottom:-20,left:-20,width:90,height:90,borderRadius:'50%',
+                   background:'rgba(255,255,255,.05)',pointerEvents:'none'}}/>
+      <div style={{position:'absolute',inset:0,pointerEvents:'none',
+                   background:'radial-gradient(60% 60% at 90% 10%,rgba(255,255,255,.14),transparent 60%)'}}/>
+
+      <div style={{position:'relative',padding:'22px 20px 20px'}}>
+        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:6}}>
+          <Lungs sz={22} c="rgba(255,255,255,.85)" sw={1.8}/>
+          <h2 style={{fontSize:20,fontWeight:800,color:'white',letterSpacing:'-0.2px'}}>
+            Feeling Short of Breath?
+          </h2>
+        </div>
+        <p style={{fontSize:15,fontWeight:500,color:'rgba(255,255,255,.78)',
+                   marginBottom:18,lineHeight:1.55,maxWidth:280}}>
+          A guided pursed-lip breathing exercise calms you down in minutes.
+        </p>
+        <button onClick={onTap} className="pulse"
+                style={{width:'100%',minHeight:72,
+                        background:'rgba(255,255,255,.22)',
+                        backdropFilter:'blur(8px)',WebkitBackdropFilter:'blur(8px)',
+                        color:'white',border:'2px solid rgba(255,255,255,.35)',
+                        borderRadius:18,
+                        display:'flex',alignItems:'center',justifyContent:'center',gap:12,
+                        fontSize:20,fontWeight:900}}>
+          <Lungs sz={26} c="white" sw={1.6}/>
+          Tap Here to Calm Down
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════
+   PHASE 5b — BREATHING PACER OVERLAY
+════════════════════════════════════════════════════ */
+function playTone(freq, dur = 0.28) {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain); gain.connect(ctx.destination);
+    osc.type = 'sine'; osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.15, ctx.currentTime + 0.03);
+    gain.gain.linearRampToValueAtTime(0, ctx.currentTime + dur);
+    osc.start(); osc.stop(ctx.currentTime + dur + 0.05);
+    setTimeout(() => ctx.close(), 600);
+  } catch(e) {}
+}
+
+function PacerOverlay({ onClose }) {
+  const [phase, setPhase] = useState('idle');
+  const [cycle, setCycle] = useState(0);
+  const timerRef = useRef(null);
+
+  useEffect(() => {
+    if (phase === 'inhale') playTone(440);
+    if (phase === 'exhale') playTone(330);
+    if (phase !== 'inhale' && phase !== 'exhale') return;
+    timerRef.current = setTimeout(() => {
+      if (phase === 'inhale') {
+        setPhase('exhale');
+      } else {
+        if (cycle >= 5) { setPhase('done'); }
+        else { setCycle(c => c + 1); setPhase('inhale'); }
+      }
+    }, phase === 'inhale' ? 2000 : 4000);
+    return () => clearTimeout(timerRef.current);
+  }, [phase, cycle]);
+
+  const label = { idle:'Ready to Begin', inhale:'Inhale...', exhale:'Exhale slowly...', done:'Well Done! 🌬' }[phase];
+  const isDone = phase === 'done';
+
+  return (
+    <div className="fi" style={{position:'fixed',inset:0,zIndex:70,background:'rgba(8,16,28,.92)',
+                                display:'flex',flexDirection:'column',alignItems:'center',
+                                justifyContent:'center',padding:24}}>
+      <button onClick={onClose}
+              style={{position:'absolute',top:18,right:18,width:52,height:52,borderRadius:15,
+                      background:'rgba(255,255,255,.14)',border:'none',
+                      display:'flex',alignItems:'center',justifyContent:'center'}}>
+        <CloseX sz={20}/>
+      </button>
+
+      <p style={{fontSize:14,fontWeight:700,color:'rgba(255,255,255,.55)',letterSpacing:'.08em',
+                 textTransform:'uppercase',marginBottom:10}}>Pursed-Lip Breathing</p>
+
+      <h2 style={{fontSize:28,fontWeight:800,color:'white',marginBottom:40,textAlign:'center',minHeight:36}}>
+        {label}
+      </h2>
+      {/* Screen-reader live announcement */}
+      <div aria-live="polite" aria-atomic="true"
+           style={{position:'absolute',width:1,height:1,overflow:'hidden',clip:'rect(0,0,0,0)',whiteSpace:'nowrap'}}>
+        {label}
+      </div>
+
+      {!isDone ? (
+        <div key={`${phase}-${cycle}`}
+             className={phase==='inhale' ? 'pi' : phase==='exhale' ? 'pe' : ''}
+             style={{width:200,height:200,borderRadius:'50%',flexShrink:0,
+                     background:'radial-gradient(circle at 38% 36%,rgba(58,173,212,.5),rgba(26,111,168,.28))',
+                     border:'2.5px solid rgba(58,173,212,.65)',
+                     display:'flex',alignItems:'center',justifyContent:'center',
+                     boxShadow:'0 0 40px rgba(58,173,212,.22)'}}>
+          {(phase==='inhale'||phase==='exhale') &&
+            <span style={{fontSize:26,fontWeight:800,color:'rgba(255,255,255,.88)'}}>
+              {phase==='inhale' ? '2s' : '4s'}
+            </span>
+          }
+        </div>
+      ) : (
+        <div style={{width:200,height:200,borderRadius:'50%',
+                     background:'radial-gradient(circle at 38% 36%,rgba(15,107,71,.5),rgba(15,107,71,.25))',
+                     border:'2.5px solid rgba(15,107,71,.65)',
+                     display:'flex',alignItems:'center',justifyContent:'center'}}>
+          <Check sz={68} c="rgba(255,255,255,.92)"/>
+        </div>
+      )}
+
+      {(phase==='inhale'||phase==='exhale') && (
+        <p style={{fontSize:18,fontWeight:700,color:'rgba(255,255,255,.72)',marginTop:28}}>
+          Cycle {cycle} of 5
+        </p>
+      )}
+
+      {isDone && (
+        <p style={{fontSize:17,fontWeight:600,color:'rgba(255,255,255,.82)',textAlign:'center',
+                   marginTop:28,maxWidth:260,lineHeight:1.6}}>
+          You completed your breathing exercise. You should feel calmer now.
+        </p>
+      )}
+
+      {!isDone && (
+        <p style={{fontSize:15,fontWeight:500,color:'rgba(255,255,255,.5)',textAlign:'center',
+                   marginTop:phase==='idle'?24:14,maxWidth:260,lineHeight:1.65}}>
+          {phase==='idle'
+            ? 'Breathe in through your nose, then slowly out through pursed lips — like gently blowing out a candle.'
+            : phase==='inhale' ? 'Gently breathe in through your nose.'
+            : 'Slowly breathe out through pursed lips.'}
+        </p>
+      )}
+
+      {phase==='idle' && (
+        <button onClick={() => { setCycle(1); setPhase('inhale'); }}
+                style={{marginTop:32,minHeight:64,width:220,
+                        background:'linear-gradient(135deg,var(--hero-1),var(--hero-3))',
+                        color:'white',border:'none',borderRadius:20,fontSize:20,fontWeight:800,
+                        boxShadow:'0 8px 24px rgba(26,111,168,.48)'}}>
+          Begin
+        </button>
+      )}
+      {isDone && (
+        <button onClick={onClose}
+                style={{marginTop:28,minHeight:64,width:220,background:'white',
+                        color:'var(--hero-1)',border:'none',borderRadius:20,fontSize:20,fontWeight:800}}>
+          Close
+        </button>
+      )}
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════
+   PHASE 6 — DOCTOR REPORT SCREEN
+════════════════════════════════════════════════════ */
+function ReportScreen({ onBack, patientName, doctorName, historyData }) {
+  const d = REPORT_DATA;
+
+  // Read latest CAT + mMRC from localStorage
+  const lastCAT = (() => { try { return JSON.parse(localStorage.getItem('resp_cat')); } catch(e) { return null; } })();
+  const lastMMRC = (() => {
+    try { const r = JSON.parse(localStorage.getItem('resp_mmrc_today')); return r; } catch(e) { return null; }
+  })();
+  const catImpact = lastCAT
+    ? (lastCAT.total <= 10 ? {label:'Low Impact',    c:'var(--calm)'}
+    :  lastCAT.total <= 20 ? {label:'Medium Impact', c:'var(--caution)'}
+    :  lastCAT.total <= 30 ? {label:'High Impact',   c:'var(--alarm)'}
+    :                        {label:'Very High',      c:'var(--alarm)'})
+    : null;
+
+  // Derive real check-in counts from live historyData
+  const realData = historyData || [];
+  const realCheckins = {
+    total:  realData.filter(e => e.status).length,
+    green:  realData.filter(e => e.status === 'green').length,
+    yellow: realData.filter(e => e.status === 'yellow').length,
+    red:    realData.filter(e => e.status === 'red').length,
+    missed: realData.filter(e => !e.status).length,
+  };
+  // Real notable events (yellow + red days with notes)
+  const notableEvents = realData
+    .filter(e => e.status === 'red' || e.status === 'yellow')
+    .slice(-5).reverse()
+    .map(e => ({ date: e.dateStr, status: e.status, note: e.note }));
+
+  const adherePct = d.meds.adherence;
+  const adhrColor = adherePct >= 80 ? 'var(--calm)' : adherePct >= 60 ? 'var(--caution)' : 'var(--alarm)';
+
+  const statusDot = (s) => ({
+    green:  { bg:'var(--calm-bg)',    text:'var(--calm)',    label:'Good'      },
+    yellow: { bg:'var(--caution-bg)', text:'var(--caution)', label:'Caution'   },
+    red:    { bg:'var(--alarm-bg)',   text:'var(--alarm)',   label:'Emergency' },
+  }[s]);
+
+  return (
+    <div style={{minHeight:'100vh',background:'var(--bg)'}}>
+      {/* Report header */}
+      <div style={{background:'linear-gradient(140deg,#14375A,#1A6FA8)',color:'white',
+                   padding:'24px 20px 22px',position:'relative',overflow:'hidden'}}>
+        <div style={{position:'absolute',inset:0,pointerEvents:'none',
+                     background:'radial-gradient(60% 60% at 90% 10%,rgba(255,255,255,.14),transparent 60%)'}}/>
+        <div style={{position:'relative',display:'flex',alignItems:'center',gap:14}}>
+          <button onClick={onBack} className="no-print"
+                  style={{width:42,height:42,borderRadius:13,background:'rgba(255,255,255,.2)',
+                          border:'none',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="15,18 9,12 15,6"/>
+            </svg>
+          </button>
+          <div>
+            <p style={{fontSize:13,fontWeight:600,color:'rgba(255,255,255,.7)',marginBottom:2}}>30-Day Summary</p>
+            <h2 style={{fontSize:22,fontWeight:800,letterSpacing:'-0.3px'}}>Doctor's Report</h2>
+            <p style={{fontSize:13,fontWeight:500,color:'rgba(255,255,255,.7)',marginTop:2}}>{d.period}</p>
+          </div>
+          <div style={{marginLeft:'auto',flexShrink:0}}>
+            <FileIcon sz={32} c="rgba(255,255,255,.5)"/>
+          </div>
+        </div>
+      </div>
+
+      <div style={{padding:'18px 16px',display:'flex',flexDirection:'column',gap:16}}>
+
+        {/* Patient info */}
+        <div style={{background:'var(--surface)',borderRadius:'var(--rc)',boxShadow:'var(--sh)',
+                     border:'1.5px solid var(--line)',padding:'18px'}}>
+          <p style={{fontSize:13,fontWeight:700,color:'var(--ink-soft)',textTransform:'uppercase',
+                     letterSpacing:'.06em',marginBottom:12}}>Patient</p>
+          <div className="report-row">
+            <span style={{fontSize:16,fontWeight:600,color:'var(--ink-soft)'}}>Name</span>
+            <span style={{fontSize:16,fontWeight:700,color:'var(--ink)'}}>{patientName || d.patient.name}</span>
+          </div>
+          <div className="report-row">
+            <span style={{fontSize:16,fontWeight:600,color:'var(--ink-soft)'}}>Date of Birth</span>
+            <span style={{fontSize:16,fontWeight:700,color:'var(--ink)'}}>{d.patient.dob}</span>
+          </div>
+          <div className="report-row">
+            <span style={{fontSize:16,fontWeight:600,color:'var(--ink-soft)'}}>Physician</span>
+            <span style={{fontSize:16,fontWeight:700,color:'var(--ink)'}}>{doctorName || d.patient.physician}</span>
+          </div>
+        </div>
+
+        {/* Check-in summary */}
+        <div style={{background:'var(--surface)',borderRadius:'var(--rc)',boxShadow:'var(--sh)',
+                     border:'1.5px solid var(--line)',padding:'18px'}}>
+          <p style={{fontSize:13,fontWeight:700,color:'var(--ink-soft)',textTransform:'uppercase',
+                     letterSpacing:'.06em',marginBottom:14}}>Daily Check-ins ({realCheckins.total}/30 days)</p>
+          <div style={{display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10,marginBottom:4}}>
+            {[
+              { label:'Good',      val:realCheckins.green,  color:'var(--calm)',    bg:'var(--calm-bg)'    },
+              { label:'Caution',   val:realCheckins.yellow, color:'var(--caution)', bg:'var(--caution-bg)' },
+              { label:'Emergency', val:realCheckins.red,    color:'var(--alarm)',   bg:'var(--alarm-bg)'   },
+              { label:'Missed',    val:realCheckins.missed, color:'var(--ink-soft)',bg:'var(--bg)'         },
+            ].map(({ label, val, color, bg }) => (
+              <div key={label} style={{background:bg,borderRadius:14,padding:'12px 8px',textAlign:'center'}}>
+                <p style={{fontSize:26,fontWeight:900,color,lineHeight:1}}>{val}</p>
+                <p style={{fontSize:12,fontWeight:600,color,marginTop:4,opacity:.85}}>{label}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Medication adherence */}
+        <div style={{background:'var(--surface)',borderRadius:'var(--rc)',boxShadow:'var(--sh)',
+                     border:'1.5px solid var(--line)',padding:'18px'}}>
+          <p style={{fontSize:13,fontWeight:700,color:'var(--ink-soft)',textTransform:'uppercase',
+                     letterSpacing:'.06em',marginBottom:14}}>Medication Adherence</p>
+          <div style={{display:'flex',alignItems:'center',gap:16,marginBottom:14}}>
+            <div style={{width:72,height:72,borderRadius:'50%',flexShrink:0,
+                         background:`conic-gradient(${adhrColor} ${adherePct}%, var(--line) 0)`,
+                         display:'flex',alignItems:'center',justifyContent:'center',
+                         boxShadow:`0 0 0 6px ${adhrColor}18`}}>
+              <div style={{width:52,height:52,borderRadius:'50%',background:'var(--surface)',
+                           display:'flex',alignItems:'center',justifyContent:'center'}}>
+                <span style={{fontSize:18,fontWeight:900,color:adhrColor}}>{adherePct}%</span>
+              </div>
+            </div>
+            <div>
+              <p style={{fontSize:22,fontWeight:800,color:adhrColor,lineHeight:1}}>
+                {adherePct >= 80 ? 'Good Adherence' : adherePct >= 60 ? 'Needs Improvement' : 'Poor Adherence'}
+              </p>
+              <p style={{fontSize:15,fontWeight:500,color:'var(--ink)',marginTop:4}}>
+                {d.meds.dosesTaken} of {d.meds.dosesTotal} doses taken
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Notable events */}
+        <div style={{background:'var(--surface)',borderRadius:'var(--rc)',boxShadow:'var(--sh)',
+                     border:'1.5px solid var(--line)',padding:'18px'}}>
+          <p style={{fontSize:13,fontWeight:700,color:'var(--ink-soft)',textTransform:'uppercase',
+                     letterSpacing:'.06em',marginBottom:14}}>Notable Events</p>
+          {notableEvents.map((ev, i) => {
+            const dot = statusDot(ev.status);
+            return (
+              <div key={i} className="report-row" style={{gap:12}}>
+                <span style={{fontSize:14,fontWeight:700,color:'var(--ink-soft)',minWidth:52}}>{ev.date}</span>
+                <span style={{fontSize:13,fontWeight:700,color:dot.text,background:dot.bg,
+                              borderRadius:8,padding:'3px 9px',flexShrink:0}}>{dot.label}</span>
+                <span style={{fontSize:15,fontWeight:500,color:'var(--ink)',flex:1}}>{ev.note}</span>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* CAT score + mMRC */}
+        {(lastCAT || lastMMRC !== null) && (
+          <div style={{background:'var(--surface)',borderRadius:'var(--rc)',boxShadow:'var(--sh)',
+                       border:'1.5px solid var(--line)',padding:'18px'}}>
+            <p style={{fontSize:13,fontWeight:700,color:'var(--ink-soft)',textTransform:'uppercase',
+                       letterSpacing:'.06em',marginBottom:14}}>Patient-Reported Scores</p>
+            {lastCAT && (
+              <div className="report-row">
+                <span style={{fontSize:16,fontWeight:600,color:'var(--ink-soft)'}}>CAT Score</span>
+                <div style={{display:'flex',alignItems:'center',gap:8}}>
+                  <span style={{fontSize:20,fontWeight:900,color:catImpact.c}}>{lastCAT.total}</span>
+                  <span style={{fontSize:13,fontWeight:700,color:catImpact.c,
+                                background:`${catImpact.c}18`,borderRadius:8,padding:'3px 9px'}}>
+                    {catImpact.label}
+                  </span>
+                </div>
+              </div>
+            )}
+            {lastMMRC !== null && (
+              <div className="report-row">
+                <span style={{fontSize:16,fontWeight:600,color:'var(--ink-soft)'}}>mMRC Dyspnea</span>
+                <span style={{fontSize:16,fontWeight:700,color:'var(--ink)'}}>Grade {lastMMRC.grade} / 4</span>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Breathing exercises */}
+        <div style={{background:'linear-gradient(135deg,rgba(26,111,168,.08),rgba(58,173,212,.05))',
+                     borderRadius:'var(--rc)',border:'1.5px solid rgba(26,111,168,.2)',padding:'18px',
+                     display:'flex',alignItems:'center',gap:14}}>
+          <div style={{width:52,height:52,borderRadius:16,
+                       background:'linear-gradient(135deg,var(--hero-1),var(--hero-3))',
+                       display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+            <Lungs sz={26} c="white" sw={1.6}/>
+          </div>
+          <div>
+            <p style={{fontSize:18,fontWeight:800,color:'var(--hero-1)'}}>
+              {d.exercises} Breathing Exercises
+            </p>
+            <p style={{fontSize:14,fontWeight:500,color:'var(--ink)',marginTop:2}}>
+              Completed in the last 30 days
+            </p>
+          </div>
+        </div>
+
+        {/* Print report button */}
+        <button onClick={() => window.print()} className="no-print"
+                style={{width:'100%',minHeight:56,borderRadius:16,
+                        background:'linear-gradient(140deg,var(--hero-1),var(--hero-3))',
+                        color:'white',border:'none',fontSize:17,fontWeight:800,cursor:'pointer',
+                        boxShadow:'0 6px 20px rgba(26,111,168,.30)',
+                        display:'flex',alignItems:'center',justifyContent:'center',gap:10}}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white"
+               strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="6 9 6 2 18 2 18 9"/>
+            <path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2"/>
+            <rect x="6" y="14" width="12" height="8"/>
+          </svg>
+          Print Report for Doctor
+        </button>
+
+        {/* Disclaimer */}
+        <p style={{textAlign:'center',fontSize:13,fontWeight:500,color:'var(--ink-soft)',
+                   lineHeight:1.6,opacity:.7,padding:'4px 8px'}}>
+          Simulated demo data · not a certified medical report<br/>
+          For clinical decisions, consult actual EHR records
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════
+   FOOTER
+════════════════════════════════════════════════════ */
+function Footer() {
+  return (
+    <p style={{textAlign:'center',fontSize:13,fontWeight:500,color:'var(--ink-soft)',
+               padding:'16px 20px 4px',lineHeight:1.6,opacity:.7}}>
+      Concept demo · not a medical device<br/>Call 911 in an emergency
+    </p>
+  );
+}
+
+/* ════════════════════════════════════════════════════
+   ONBOARDING SCREEN
+════════════════════════════════════════════════════ */
+function OnboardingScreen({ onComplete }) {
+  const [step,     setStep]     = useState(0);
+  const [name,     setName]     = useState('');
+  const [doctor,   setDoctor]   = useState('');
+  const [docPhone, setDocPhone] = useState('');
+  const [inhaler,  setInhaler]  = useState('');
+  const [ecName,   setEcName]   = useState('');
+  const [ecPhone,  setEcPhone]  = useState('');
+  const [obError,  setObError]  = useState(false);
+
+  const steps = [
+    { emoji:'👋', question:"What's your name?",          hint:"We'll use this to personalize your experience",    value:name,     onChange:setName,     placeholder:'e.g. Dorothy Hines',      inputType:'text' },
+    { emoji:'🩺', question:"Who is your doctor?",         hint:'Used to generate your medical report',             value:doctor,   onChange:setDoctor,   placeholder:'e.g. Dr. Michael Stern',   inputType:'text' },
+    { emoji:'📞', question:"Doctor's phone number?",      hint:'Enables quick-dial from the yellow zone',          value:docPhone, onChange:setDocPhone, placeholder:'e.g. 555-987-6543',        inputType:'tel'  },
+    { emoji:'💨', question:"What is your main inhaler?",  hint:"We'll remind you when it's time to take it",      value:inhaler,  onChange:setInhaler,  placeholder:'e.g. Symbicort Inhaler',   inputType:'text' },
+    { emoji:'🆘', question:"Add an emergency contact?",   hint:'Optional — appears as a quick-call button during emergencies', type:'ec' },
+  ];
+
+  const current   = steps[step];
+  const isEcStep  = current.type === 'ec';
+  const canNext   = isEcStep ? true : (current.value || '').trim().length > 1;
+
+  function handleNext() {
+    if (step < steps.length - 1) { setStep(s => s + 1); return; }
+    try {
+      localStorage.setItem('resp_name',         name.trim());
+      localStorage.setItem('resp_doctor',        doctor.trim());
+      localStorage.setItem('resp_doctor_phone',  docPhone.trim());
+      localStorage.setItem('resp_inhaler',       inhaler.trim());
+      localStorage.setItem('resp_ec_name',       ecName.trim());
+      localStorage.setItem('resp_ec_phone',      ecPhone.trim());
+      localStorage.setItem('resp_onboarded',     '1');
+    } catch(e) {
+      setObError(true);
+      setTimeout(() => setObError(false), 3000);
+    }
+    onComplete({ name: name.trim(), doctor: doctor.trim(), doctorPhone: docPhone.trim(),
+                 inhaler: inhaler.trim(), ecName: ecName.trim(), ecPhone: ecPhone.trim() });
+  }
+
+  return (
+    <div className="wrap screen-up" style={{display:'flex',flexDirection:'column',minHeight:'100dvh'}}>
+      {/* Top gradient bar */}
+      <div style={{height:5,background:'linear-gradient(90deg,var(--hero-1),var(--hero-3))'}}/>
+
+      {/* Logo strip */}
+      <div style={{display:'flex',alignItems:'center',gap:10,padding:'20px 20px 0'}}>
+        <div className="logo-tile" style={{width:36,height:36,borderRadius:11,flexShrink:0,
+             background:'linear-gradient(135deg,var(--hero-1),var(--hero-3))',
+             display:'flex',alignItems:'center',justifyContent:'center'}}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h2a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-1H1a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h2V5.73A2 2 0 0 1 10 4a2 2 0 0 1 2-2z"/>
+          </svg>
+        </div>
+        <span style={{fontSize:17,fontWeight:800,
+          background:'linear-gradient(90deg,var(--hero-1),var(--hero-3))',
+          WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>
+          Respiro
+        </span>
+      </div>
+
+      {/* Back button row */}
+      <div style={{display:'flex',alignItems:'center',padding:'16px 20px 0',minHeight:44}}>
+        {step > 0 && (
+          <button onClick={() => setStep(s => s - 1)}
+                  style={{background:'none',border:'none',padding:'8px 12px 8px 4px',
+                          fontSize:16,fontWeight:700,color:'var(--hero-1)',cursor:'pointer'}}>
+            ← Back
+          </button>
+        )}
+      </div>
+
+      {/* Progress dots */}
+      <div style={{display:'flex',gap:8,padding:'8px 20px 0',justifyContent:'center'}}>
+        {steps.map((_,i) => (
+          <div key={i} style={{width: i===step ? 24 : 8, height:8, borderRadius:4,
+            background: i<=step ? 'var(--hero-1)' : 'var(--line)',
+            transition:'all .3s'}}/>
+        ))}
+      </div>
+
+      {/* Content */}
+      <div key={step} className="screen-up" style={{flex:1,padding:'40px 24px 24px',display:'flex',flexDirection:'column'}}>
+        <div style={{fontSize:52,marginBottom:20,textAlign:'center'}}>{current.emoji}</div>
+        <h1 id="ob-question" style={{fontSize:28,fontWeight:800,color:'var(--ink)',marginBottom:8,lineHeight:1.2}}>
+          {current.question}
+        </h1>
+        <p style={{fontSize:16,color:'var(--ink-soft)',marginBottom:40}}>{current.hint}</p>
+
+        {isEcStep ? (
+          <div style={{display:'flex',flexDirection:'column',gap:24}}>
+            <div>
+              <label htmlFor="ob-ec-name" style={{display:'block',fontSize:13,fontWeight:700,
+                color:'var(--ink-soft)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:8}}>
+                Contact Name
+              </label>
+              <input id="ob-ec-name" className="ob-input" type="text" autoComplete="name"
+                placeholder="e.g. Sarah (daughter)"
+                value={ecName} onChange={e => setEcName(e.target.value)} autoFocus/>
+            </div>
+            <div>
+              <label htmlFor="ob-ec-phone" style={{display:'block',fontSize:13,fontWeight:700,
+                color:'var(--ink-soft)',textTransform:'uppercase',letterSpacing:'.06em',marginBottom:8}}>
+                Phone Number
+              </label>
+              <input id="ob-ec-phone" className="ob-input" type="tel" autoComplete="tel"
+                placeholder="e.g. 555-123-4567"
+                value={ecPhone} onChange={e => setEcPhone(e.target.value)}
+                onKeyDown={e => e.key==='Enter' && handleNext()}/>
+            </div>
+          </div>
+        ) : (
+          <input
+            id="ob-field"
+            className="ob-input"
+            type={current.inputType || 'text'}
+            aria-labelledby="ob-question"
+            autoComplete={current.inputType === 'tel' ? 'tel' : 'off'}
+            placeholder={current.placeholder}
+            value={current.value}
+            onChange={e => current.onChange(e.target.value)}
+            onKeyDown={e => e.key==='Enter' && canNext && handleNext()}
+            autoFocus
+          />
+        )}
+      </div>
+
+      {/* Step counter */}
+      <div style={{textAlign:'center',padding:'0 0 12px',
+                   fontSize:13,color:'var(--ink-soft)',fontWeight:600}}>
+        Step {step+1} of {steps.length}
+      </div>
+
+      {/* Next button */}
+      <div style={{padding:'0 24px 40px'}}>
+        {obError && (
+          <p style={{textAlign:'center',color:'var(--caution)',fontWeight:600,fontSize:14,marginBottom:10}}>
+            ⚠ Could not save — storage may be full. Your data is saved in memory for this session.
+          </p>
+        )}
+        <button onClick={handleNext} disabled={!canNext}
+          style={{width:'100%',height:64,borderRadius:18,border:'none',
+                  fontSize:18,fontWeight:700,cursor: canNext ? 'pointer' : 'not-allowed',
+                  background: canNext
+                    ? 'linear-gradient(140deg,var(--hero-1),var(--hero-3))'
+                    : 'var(--line)',
+                  color: canNext ? 'white' : 'var(--ink-soft)',
+                  transition:'all .2s',
+                  boxShadow: canNext ? '0 6px 22px rgba(26,111,168,.40)' : 'none'}}>
+          {step < steps.length - 1 ? 'Next →' : "Let's Go ✓"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════
+   HISTORY SCREEN
+════════════════════════════════════════════════════ */
+function HistoryScreen({ historyData }) {
+  const [selected, setSelected] = useState(null);
+  const data = historyData;
+
+  const STATUS_STYLE = {
+    green:  { bg:'var(--calm-bg)',    dot:'var(--calm)',    label:'Good'      },
+    yellow: { bg:'var(--caution-bg)', dot:'var(--caution)', label:'Not great' },
+    red:    { bg:'var(--alarm-bg)',   dot:'var(--alarm)',   label:'Emergency' },
+  };
+
+  // Group into weeks (7 cols)
+  const weeks = [];
+  // Find which weekday the first day is (0=Sun)
+  const firstDow = data[0].date.getDay();
+  // Pad so calendar starts on Sunday
+  const padded = [...Array(firstDow).fill(null), ...data];
+  for (let i = 0; i < padded.length; i += 7) {
+    weeks.push(padded.slice(i, i + 7));
+  }
+
+  const greenCount  = data.filter(d=>d.status==='green').length;
+  const yellowCount = data.filter(d=>d.status==='yellow').length;
+  const redCount    = data.filter(d=>d.status==='red').length;
+  const missedCount = data.filter(d=>!d.status).length;
+
+  const selectedEntry = selected !== null ? data.find(d => d.dayNum === selected) : null;
+
+  return (
+    <div style={{paddingBottom:90}}>
+      {/* Month label */}
+      <div style={{padding:'20px 16px 4px'}}>
+        <p style={{fontSize:13,fontWeight:700,color:'var(--ink-soft)',textTransform:'uppercase',
+                   letterSpacing:'.08em',marginBottom:2}}>30-Day Overview</p>
+        <p style={{fontSize:22,fontWeight:800,color:'var(--ink)'}}>
+          {data[0].dateStr} – {data[data.length-1].dateStr}
+        </p>
+      </div>
+
+      {/* Summary pills */}
+      <div style={{display:'flex',gap:8,padding:'12px 16px',overflowX:'auto',
+                   WebkitOverflowScrolling:'touch',scrollbarWidth:'none'}}>
+        {[
+          {label:`${greenCount} Good`,      bg:'var(--calm-bg)',    c:'var(--calm)'   },
+          {label:`${yellowCount} Hard`,     bg:'var(--caution-bg)', c:'var(--caution)'},
+          {label:`${redCount} Emergency`,   bg:'var(--alarm-bg)',   c:'var(--alarm)'  },
+          {label:`${missedCount} Missed`,   bg:'#F5F5F5',           c:'var(--ink-soft)'},
+        ].map(p => (
+          <div key={p.label} style={{flexShrink:0,padding:'6px 14px',borderRadius:20,
+               background:p.bg,color:p.c,fontWeight:700,fontSize:13,whiteSpace:'nowrap'}}>
+            {p.label}
+          </div>
+        ))}
+      </div>
+
+      {/* Calendar */}
+      <div style={{padding:'4px 16px 0'}}>
+        {/* DOW headers */}
+        <div style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:4,marginBottom:4}}>
+          {['S','M','T','W','T','F','S'].map((d,i) => (
+            <div key={i} style={{textAlign:'center',fontSize:13,fontWeight:700,
+                                  color:'var(--ink-soft)',padding:'4px 0'}}>
+              {d}
+            </div>
+          ))}
+        </div>
+
+        {/* Weeks */}
+        {weeks.map((week, wi) => (
+          <div key={wi} style={{display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:4,marginBottom:4}}>
+            {week.map((entry, di) => {
+              if (!entry) return <div key={di}/>;
+              const isSelected = selected === entry.dayNum;
+              const st = entry.status ? STATUS_STYLE[entry.status] : null;
+              const ariaLabel = entry.status
+                ? `${entry.dateStr}, ${STATUS_STYLE[entry.status].label} zone${isSelected ? ', selected' : ''}`
+                : `${entry.dateStr}, no check-in`;
+              return (
+                <button key={di}
+                  className={`cal-day${entry.status ? ' has-data' : ''}`}
+                  disabled={!entry.status}
+                  aria-pressed={entry.status ? isSelected : undefined}
+                  aria-label={ariaLabel}
+                  onClick={() => entry.status && setSelected(isSelected ? null : entry.dayNum)}
+                  style={{
+                    background: isSelected ? (st ? st.bg : '#F5F5F5') :
+                                entry.status ? 'var(--surface)' : '#F8F8F8',
+                    border: isSelected ? `2px solid ${st ? st.dot : 'var(--ink-soft)'}` :
+                            entry.status ? '1px solid var(--line)' : '1px solid transparent',
+                    fontFamily: 'inherit', cursor: entry.status ? 'pointer' : 'default',
+                  }}>
+                  <span style={{fontSize:13,fontWeight:600,color:'var(--ink-soft)'}}>{entry.dayNum}</span>
+                  {entry.status && (() => {
+                    const shape = entry.status === 'green'
+                      ? {borderRadius:'50%'}
+                      : entry.status === 'yellow'
+                        ? {borderRadius:2,transform:'rotate(45deg)'}
+                        : {borderRadius:2};
+                    return <div style={{width:9,height:9,background: STATUS_STYLE[entry.status].dot,...shape}}/>;
+                  })()}
+                </button>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+
+      {/* Selected day detail */}
+      {selectedEntry && (
+        <div key={selectedEntry.dayNum} className="screen-up"
+          style={{margin:'16px 16px 0',padding:18,borderRadius:20,
+                  background: STATUS_STYLE[selectedEntry.status].bg,
+                  border:`1.5px solid ${STATUS_STYLE[selectedEntry.status].dot}22`}}>
+          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:8}}>
+            <div style={{width:10,height:10,flexShrink:0,
+                         background: STATUS_STYLE[selectedEntry.status].dot,
+                         ...(selectedEntry.status==='green'  ? {borderRadius:'50%'}               :
+                             selectedEntry.status==='yellow' ? {borderRadius:2,transform:'rotate(45deg)'} :
+                                                               {borderRadius:2})                  }}/>
+            <span style={{fontWeight:800,fontSize:15,color:'var(--ink)'}}>{selectedEntry.dateStr}</span>
+            <span style={{marginLeft:'auto',fontWeight:700,fontSize:13,
+                          color: STATUS_STYLE[selectedEntry.status].dot}}>
+              {STATUS_STYLE[selectedEntry.status].label}
+            </span>
+          </div>
+          <p style={{fontSize:14,color:'var(--ink-soft)',lineHeight:1.5}}>{selectedEntry.note}</p>
+        </div>
+      )}
+
+      {/* Legend */}
+      <div style={{margin:'20px 16px 0',display:'flex',gap:16,flexWrap:'wrap'}}>
+        {[
+          { key:'green',  shape:{borderRadius:'50%'},               color:'var(--calm)',    label:'Good'      },
+          { key:'yellow', shape:{borderRadius:2,transform:'rotate(45deg)'}, color:'var(--caution)', label:'Caution'   },
+          { key:'red',    shape:{borderRadius:2},                   color:'var(--alarm)',   label:'Emergency' },
+        ].map(({key,shape,color,label}) => (
+          <div key={key} style={{display:'flex',alignItems:'center',gap:6}}>
+            <div style={{width:10,height:10,background:color,...shape}}/>
+            <span style={{fontSize:12,color:'var(--ink-soft)',fontWeight:600}}>{label}</span>
+          </div>
+        ))}
+        <div style={{display:'flex',alignItems:'center',gap:6}}>
+          <div style={{width:10,height:10,borderRadius:'50%',background:'#DDD'}}/>
+          <span style={{fontSize:12,color:'var(--ink-soft)',fontWeight:600}}>Missed</span>
+        </div>
+      </div>
+
+      {/* ── Weekly Trends chart ── */}
+      {(() => {
+        const weekGroups = [];
+        for (let w = 0; w < 4; w++) {
+          const days = data.slice(w * 7, w * 7 + 7);
+          const g = days.filter(d=>d.status==='green').length;
+          const y = days.filter(d=>d.status==='yellow').length;
+          const r = days.filter(d=>d.status==='red').length;
+          const total = 7;
+          weekGroups.push({ label: `${days[0].dateStr}–${days[6].dateStr}`, g, y, r,
+                            missed: total - g - y - r });
+        }
+        return (
+          <div style={{margin:'24px 16px 0',background:'var(--surface)',borderRadius:20,
+                       border:'1.5px solid var(--line)',padding:'16px'}}>
+            <p style={{fontSize:13,fontWeight:700,color:'var(--ink-soft)',textTransform:'uppercase',
+                       letterSpacing:'.08em',marginBottom:16}}>Weekly Trends</p>
+            <div style={{display:'flex',flexDirection:'column',gap:12}}>
+              {weekGroups.map((wk, i) => {
+                const pct = g => Math.round(g / 7 * 100);
+                return (
+                  <div key={i}>
+                    <div style={{display:'flex',justifyContent:'space-between',marginBottom:5}}>
+                      <span style={{fontSize:12,fontWeight:600,color:'var(--ink-soft)'}}>{wk.label}</span>
+                      <span style={{fontSize:12,fontWeight:700,color:'var(--calm)'}}>
+                        {wk.g}/7 good
+                      </span>
+                    </div>
+                    <div style={{height:14,borderRadius:7,overflow:'hidden',
+                                 background:'var(--bg)',display:'flex'}}>
+                      {wk.g > 0 && <div style={{width:`${pct(wk.g)}%`,background:'var(--calm)',transition:'width .4s'}}/>}
+                      {wk.y > 0 && <div style={{width:`${pct(wk.y)}%`,background:'var(--caution)',transition:'width .4s'}}/>}
+                      {wk.r > 0 && <div style={{width:`${pct(wk.r)}%`,background:'var(--alarm)',transition:'width .4s'}}/>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{display:'flex',gap:14,marginTop:14,flexWrap:'wrap'}}>
+              {[
+                {c:'var(--calm)',    l:'Good',      s:{borderRadius:'50%'}},
+                {c:'var(--caution)',l:'Caution',   s:{borderRadius:2,transform:'rotate(45deg)'}},
+                {c:'var(--alarm)',  l:'Emergency', s:{borderRadius:2}},
+              ].map(({c,l,s})=>(
+                <div key={l} style={{display:'flex',alignItems:'center',gap:6}}>
+                  <div style={{width:10,height:10,background:c,flexShrink:0,...s}}/>
+                  <span style={{fontSize:13,color:'var(--ink-soft)',fontWeight:600}}>{l}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════
+   SETTINGS SCREEN
+════════════════════════════════════════════════════ */
+function SettingsScreen({ patientName, doctorName, inhalerName, emergencyContact, doctorPhone: initDocPhone, onSave }) {
+  const [name,     setName]     = useState(patientName  || '');
+  const [doctor,   setDoctor]   = useState(doctorName   || '');
+  const [docPhone, setDocPhone] = useState(initDocPhone || '');
+  const [inhaler,  setInhaler]  = useState(inhalerName  || '');
+  const [ecName,   setEcName]   = useState((emergencyContact && emergencyContact.name)  || '');
+  const [ecPhone,  setEcPhone]  = useState((emergencyContact && emergencyContact.phone) || '');
+  const [saved,     setSaved]     = useState(false);
+  const [saveError, setSaveError] = useState(false);
+
+  function handleSave() {
+    try {
+      localStorage.setItem('resp_name',         name.trim());
+      localStorage.setItem('resp_doctor',        doctor.trim());
+      localStorage.setItem('resp_doctor_phone',  docPhone.trim());
+      localStorage.setItem('resp_inhaler',       inhaler.trim());
+      localStorage.setItem('resp_ec_name',       ecName.trim());
+      localStorage.setItem('resp_ec_phone',      ecPhone.trim());
+    } catch(e) {
+      setSaveError(true);
+      setTimeout(() => setSaveError(false), 3000);
+      return;
+    }
+    onSave({ name: name.trim(), doctor: doctor.trim(), doctorPhone: docPhone.trim(),
+             inhaler: inhaler.trim(), ecName: ecName.trim(), ecPhone: ecPhone.trim() });
+    setSaved(true);
+    setTimeout(() => setSaved(false), 2000);
+  }
+
+  const Field = ({ label, value, onChange, type='text', placeholder='' }) => {
+    const id = `sf-${label.toLowerCase().replace(/\s+/g,'-').replace(/[^a-z0-9-]/g,'')}`;
+    return (
+      <div style={{marginBottom:20}}>
+        <label htmlFor={id} style={{display:'block',fontSize:12,fontWeight:700,color:'var(--ink-soft)',
+                   textTransform:'uppercase',letterSpacing:'.07em',marginBottom:8}}>{label}</label>
+        <input id={id} type={type} value={value} onChange={e=>onChange(e.target.value)}
+               placeholder={placeholder} autoComplete={type==='tel' ? 'tel' : type==='email' ? 'email' : 'off'}
+               style={{width:'100%',fontSize:18,fontWeight:600,color:'var(--ink)',fontFamily:'inherit',
+                       background:'var(--bg)',border:'1.5px solid var(--line)',borderRadius:14,
+                       padding:'14px 16px',outline:'none',boxSizing:'border-box',
+                       transition:'border-color .2s'}}
+               onFocus={e=>e.target.style.borderColor='var(--hero-1)'}
+               onBlur={e=>e.target.style.borderColor='var(--line)'}/>
+      </div>
+    );
+  };
+
+  return (
+    <div style={{paddingBottom:100}}>
+      {/* Header */}
+      <div style={{background:'var(--surface)',borderBottom:'1.5px solid var(--line)',
+                   padding:'20px 16px 16px',display:'flex',alignItems:'center',gap:14}}>
+        <div style={{width:40,height:40,borderRadius:13,
+                     background:'linear-gradient(140deg,rgba(26,111,168,.10),rgba(58,173,212,.07))',
+                     border:'1.5px solid rgba(26,111,168,.14)',
+                     display:'flex',alignItems:'center',justifyContent:'center'}}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+               stroke="var(--hero-1)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+        </div>
+        <div>
+          <p style={{fontSize:11,fontWeight:700,color:'var(--ink-soft)',textTransform:'uppercase',
+                     letterSpacing:'.08em',marginBottom:1}}>Preferences</p>
+          <p style={{fontSize:20,fontWeight:800,color:'var(--ink)'}}>Settings</p>
+        </div>
+      </div>
+
+      <div style={{padding:'20px 16px 0'}}>
+
+        {/* Profile section */}
+        <p style={{fontSize:13,fontWeight:700,color:'var(--hero-1)',textTransform:'uppercase',
+                   letterSpacing:'.08em',marginBottom:16}}>Your Profile</p>
+        <div style={{background:'var(--surface)',borderRadius:20,border:'1.5px solid var(--line)',
+                     padding:'20px',marginBottom:20}}>
+          <Field label="Your Name"     value={name}    onChange={setName}    placeholder="e.g. Dorothy Hines"/>
+          <Field label="Doctor's Name"  value={doctor}   onChange={setDoctor}   placeholder="e.g. Dr. Michael Stern"/>
+          <Field label="Doctor's Phone" value={docPhone} onChange={setDocPhone} type="tel" placeholder="e.g. 555-987-6543"/>
+          <Field label="Main Inhaler"   value={inhaler}  onChange={setInhaler}  placeholder="e.g. Symbicort Inhaler"/>
+        </div>
+
+        {/* Emergency contact section */}
+        <p style={{fontSize:13,fontWeight:700,color:'var(--alarm)',textTransform:'uppercase',
+                   letterSpacing:'.08em',marginBottom:16}}>Emergency Contact</p>
+        <div style={{background:'var(--surface)',borderRadius:20,border:'1.5px solid var(--line)',
+                     padding:'20px',marginBottom:24}}>
+          <div style={{display:'flex',gap:10,marginBottom:12,padding:'10px 12px',
+                       background:'var(--alarm-bg)',borderRadius:12}}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--alarm)"
+                 strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0,marginTop:1}}>
+              <line x1="12" y1="5" x2="12" y2="14"/><circle cx="12" cy="18.5" r="1.8" fill="var(--alarm)" stroke="none"/>
+            </svg>
+            <p style={{fontSize:13,color:'var(--alarm)',fontWeight:600,lineHeight:1.5}}>
+              This person will appear as a quick-call button during emergencies.
+            </p>
+          </div>
+          <Field label="Contact Name"  value={ecName}  onChange={setEcName}  placeholder="e.g. Sarah (daughter)"/>
+          <Field label="Phone Number"  value={ecPhone} onChange={setEcPhone} type="tel" placeholder="e.g. 555-123-4567"/>
+        </div>
+
+        {/* Save button */}
+        {saveError && (
+          <div style={{marginBottom:12,padding:'12px 16px',background:'var(--alarm-bg)',
+                       borderRadius:12,border:'1px solid rgba(198,43,43,.25)'}}>
+            <p style={{fontSize:14,fontWeight:600,color:'var(--alarm)'}}>
+              ⚠ Could not save — your device storage may be full. Please free some space and try again.
+            </p>
+          </div>
+        )}
+        <button onClick={handleSave}
+          style={{width:'100%',height:64,borderRadius:18,border:'none',fontFamily:'inherit',
+                  fontSize:18,fontWeight:700,cursor:'pointer',
+                  background: saveError
+                    ? 'var(--alarm)'
+                    : saved
+                      ? 'linear-gradient(140deg,var(--calm),#1A9A6A)'
+                      : 'linear-gradient(140deg,var(--hero-1),var(--hero-3))',
+                  color:'white',transition:'background .3s',
+                  boxShadow:'0 6px 22px rgba(26,111,168,.35)'}}>
+          {saveError ? '⚠ Save Failed' : saved ? '✓ Saved!' : 'Save Changes'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════
+   PHASE D — CAT SCORE MODAL (COPD Assessment Test)
+════════════════════════════════════════════════════ */
+const CAT_QUESTIONS = [
+  { q:'Cough',      lo:'I never cough',                       hi:'I cough all the time' },
+  { q:'Phlegm',     lo:'No phlegm in my chest at all',        hi:'My chest is completely full of phlegm' },
+  { q:'Chest',      lo:'My chest does not feel tight at all', hi:'My chest feels very tight' },
+  { q:'Breathless', lo:'Not breathless climbing 1 flight',    hi:'Very breathless climbing 1 flight' },
+  { q:'Activity',   lo:'Not limited doing activities at home',hi:'Very limited doing activities at home' },
+  { q:'Confidence', lo:'Confident leaving home despite COPD', hi:'Not at all confident leaving home' },
+  { q:'Sleep',      lo:'I sleep soundly',                     hi:"I don't sleep soundly because of COPD" },
+  { q:'Energy',     lo:'I have lots of energy',               hi:'I have no energy at all' },
+];
+
+function CATScoreModal({ onClose, onSave }) {
+  const [scores, setScores] = useState(CAT_QUESTIONS.map(() => 0));
+  const total = scores.reduce((a,b) => a+b, 0);
+  const impact = total <= 10 ? { label:'Low Impact',       color:'var(--calm)'    }
+               : total <= 20 ? { label:'Medium Impact',    color:'var(--caution)' }
+               : total <= 30 ? { label:'High Impact',      color:'var(--alarm)'   }
+               :               { label:'Very High Impact', color:'var(--alarm)'   };
+
+  function handleSave() {
+    const entry = { total, date: new Date().toISOString() };
+    try { localStorage.setItem('resp_cat', JSON.stringify(entry)); } catch(e) {}
+    onSave && onSave(entry);
+    onClose();
+  }
+
+  return (
+    <div role="dialog" aria-modal="true" aria-label="COPD Assessment Test"
+         style={{position:'fixed',inset:0,zIndex:65,background:'rgba(8,16,28,.9)',
+                 overflowY:'auto',padding:'20px 16px'}}>
+      <div style={{background:'var(--surface)',borderRadius:24,padding:'22px 18px 18px',
+                   maxWidth:460,margin:'0 auto',boxShadow:'0 24px 64px rgba(0,0,0,.4)'}}>
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:18}}>
+          <div>
+            <p style={{fontSize:12,fontWeight:700,color:'var(--ink-soft)',textTransform:'uppercase',
+                       letterSpacing:'.08em'}}>Weekly Assessment</p>
+            <h2 style={{fontSize:20,fontWeight:800,color:'var(--ink)'}}>COPD Assessment Test</h2>
+          </div>
+          <button onClick={onClose} aria-label="Close"
+                  style={{width:40,height:40,borderRadius:12,background:'var(--bg)',border:'1px solid var(--line)',
+                          display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',fontSize:16}}>
+            ✕
+          </button>
+        </div>
+
+        {CAT_QUESTIONS.map((q, i) => (
+          <div key={i} style={{marginBottom:18}}>
+            <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}>
+              <span style={{fontSize:13,fontWeight:700,color:'var(--ink)'}}>{q.q}</span>
+              <span style={{fontSize:13,fontWeight:800,color:'var(--hero-1)'}}>{scores[i]} / 5</span>
+            </div>
+            <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
+              <span style={{fontSize:11,color:'var(--ink-soft)',maxWidth:'44%',lineHeight:1.4}}>{q.lo}</span>
+              <span style={{fontSize:11,color:'var(--ink-soft)',maxWidth:'44%',lineHeight:1.4,textAlign:'right'}}>{q.hi}</span>
+            </div>
+            <input type="range" min="0" max="5" step="1" value={scores[i]}
+                   onChange={e => setScores(prev => { const n=[...prev]; n[i]=+e.target.value; return n; })}
+                   aria-label={`${q.q}: ${scores[i]} out of 5`}
+                   style={{width:'100%',accentColor:'var(--hero-1)',cursor:'pointer'}}/>
+          </div>
+        ))}
+
+        <div style={{background:'var(--bg)',borderRadius:14,padding:'14px 16px',marginBottom:16,textAlign:'center',
+                     border:'1.5px solid var(--line)'}}>
+          <p style={{fontSize:32,fontWeight:900,color:impact.color,lineHeight:1}}>{total}</p>
+          <p style={{fontSize:14,fontWeight:700,color:impact.color,marginTop:4}}>{impact.label}</p>
+          <p style={{fontSize:12,color:'var(--ink-soft)',marginTop:6,lineHeight:1.5}}>
+            0–10 low · 11–20 medium · 21–30 high · 31–40 very high impact
+          </p>
+        </div>
+
+        <button onClick={handleSave}
+                style={{width:'100%',minHeight:56,background:'linear-gradient(140deg,var(--hero-1),var(--hero-3))',
+                        color:'white',border:'none',borderRadius:16,fontSize:17,fontWeight:800,cursor:'pointer',
+                        boxShadow:'0 6px 22px rgba(26,111,168,.35)'}}>
+          Save Score
+        </button>
+        <p style={{fontSize:11,color:'var(--ink-soft)',textAlign:'center',marginTop:10,lineHeight:1.5}}>
+          Share this score with your doctor at each visit. Recommended weekly.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════
+   PHASE D — mMRC DYSPNEA QUICK CHECK
+════════════════════════════════════════════════════ */
+const MMRC_LEVELS = [
+  'Only breathless with strenuous exercise',
+  'Breathless when hurrying or walking up a slight hill',
+  'Walking slower than peers, or stops on flat ground to catch breath',
+  'Stops to catch breath after ~100 meters on flat ground',
+  'Too breathless to leave the house, or breathless when dressing',
+];
+function catDaysSince() {
+  try {
+    const raw = localStorage.getItem('resp_cat');
+    if (!raw) return Infinity;
+    const { date } = JSON.parse(raw);
+    return Math.floor((Date.now() - new Date(date).getTime()) / 86400000);
+  } catch(e) { return Infinity; }
+}
+
+function mMRCToday() {
+  try {
+    const raw = localStorage.getItem('resp_mmrc_today');
+    if (!raw) return null;
+    const { grade, date } = JSON.parse(raw);
+    if (date === new Date().toISOString().slice(0,10)) return grade;
+  } catch(e) {}
+  return null;
+}
+function MMRCCard({ onSave }) {
+  const today = mMRCToday();
+  const [grade, setGrade] = useState(today);
+  if (today !== null && grade === today) {
+    return (
+      <div style={{background:'var(--surface)',borderRadius:18,border:'1.5px solid var(--line)',
+                   padding:'14px 16px',display:'flex',alignItems:'center',gap:12}}>
+        <div style={{fontSize:24,flexShrink:0}}>🫁</div>
+        <div>
+          <p style={{fontSize:13,fontWeight:700,color:'var(--ink)'}}>Breathlessness Today</p>
+          <p style={{fontSize:13,color:'var(--hero-1)',fontWeight:600}}>Grade {today}: {MMRC_LEVELS[today]}</p>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div style={{background:'var(--surface)',borderRadius:18,border:'1.5px solid var(--line)',
+                 padding:'16px 16px 14px'}}>
+      <p style={{fontSize:15,fontWeight:800,color:'var(--ink)',marginBottom:12}}>
+        How breathless are you today?
+      </p>
+      {MMRC_LEVELS.map((l, i) => (
+        <button key={i} onClick={() => {
+          setGrade(i);
+          try { localStorage.setItem('resp_mmrc_today',
+            JSON.stringify({grade:i,date:new Date().toISOString().slice(0,10)})); } catch(e) {}
+          onSave && onSave(i);
+        }}
+        style={{display:'block',width:'100%',textAlign:'left',padding:'10px 12px',marginBottom:6,
+                borderRadius:12,border:`1.5px solid ${grade===i?'var(--hero-1)':'var(--line)'}`,
+                background:grade===i?'rgba(26,111,168,.08)':'transparent',
+                fontSize:14,fontWeight:grade===i?700:500,color:'var(--ink)',cursor:'pointer',
+                fontFamily:'inherit'}}>
+          <span style={{fontWeight:800,color:'var(--hero-1)',marginRight:8}}>{i}</span>{l}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════
+   BOTTOM NAV BAR
+════════════════════════════════════════════════════ */
+function NavBar({ screen, onNav }) {
+  return (
+    <nav className="nav-bar">
+      {/* Home */}
+      <button className={`nav-btn${screen==='home'?' active':''}`} onClick={() => onNav('home')}>
+        <HomeIcon sz={22} c={screen==='home' ? 'var(--hero-1)' : 'var(--ink-soft)'}/>
+        Home
+      </button>
+
+      {/* Export Report */}
+      <button className={`nav-btn${screen==='report'?' active':''}`} onClick={() => onNav('report')}>
+        <FileIcon sz={22} c={screen==='report' ? 'var(--hero-1)' : 'var(--ink-soft)'}/>
+        Export Report
+      </button>
+
+      {/* History */}
+      <button className={`nav-btn${screen==='history'?' active':''}`} onClick={() => onNav('history')}
+              style={{border:'none',background:'none'}}>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+             stroke={screen==='history' ? 'var(--hero-1)' : 'var(--ink-soft)'}
+             strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="22,12 18,12 15,21 9,3 6,12 2,12"/>
+        </svg>
+        History
+      </button>
+
+      {/* Settings */}
+      <button className={`nav-btn${screen==='settings'?' active':''}`} onClick={() => onNav('settings')}
+              style={{border:'none',background:'none'}}>
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none"
+             stroke={screen==='settings' ? 'var(--hero-1)' : 'var(--ink-soft)'}
+             strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+        Settings
+      </button>
+    </nav>
+  );
+}
+
+/* ════════════════════════════════════════════════════
+   APP
+════════════════════════════════════════════════════ */
+const SCREEN_ORDER = { home: 0, report: 1, history: 2, settings: 3 };
+
+function App() {
+  const [screen,     setScreen]     = useState('home');
+  const [prevScreen, setPrevScreen] = useState(null);
+  const [showModal,  setShowModal]  = useState(false);
+  const [showPacer,  setShowPacer]  = useState(false);
+  const [showCAT,    setShowCAT]    = useState(false);
+  const [saveError,  setSaveError]  = useState(false);
+
+  // Onboarding — persisted to localStorage
+  const [hasOnboarded, setHasOnboarded] = useState(() => {
+    try { return !!localStorage.getItem('resp_onboarded'); } catch(e) { return false; }
+  });
+  const [patientName, setPatientName] = useState(() => {
+    try { return localStorage.getItem('resp_name') || 'Dorothy'; } catch(e) { return 'Dorothy'; }
+  });
+  const [doctorName, setDoctorName] = useState(() => {
+    try { return localStorage.getItem('resp_doctor') || 'Dr. Michael Stern'; } catch(e) { return 'Dr. Michael Stern'; }
+  });
+  const [doctorPhone, setDoctorPhone] = useState(() => {
+    try { return localStorage.getItem('resp_doctor_phone') || ''; } catch(e) { return ''; }
+  });
+  const [inhalerName, setInhalerName] = useState(() => {
+    try { return localStorage.getItem('resp_inhaler') || 'Symbicort Inhaler'; } catch(e) { return 'Symbicort Inhaler'; }
+  });
+  const [emergencyContact, setEmergencyContact] = useState(() => {
+    try { return { name: localStorage.getItem('resp_ec_name') || '',
+                   phone: localStorage.getItem('resp_ec_phone') || '' }; } catch(e) { return { name:'', phone:'' }; }
+  });
+
+  // Real check-in persistence
+  const [checkins, setCheckins] = useState(() => loadCheckIns());
+  const historyData = buildHistoryData(checkins);
+
+  // Pre-select today's status if already logged
+  const [selected, setSelected] = useState(() => {
+    const all = loadCheckIns();
+    const todayEntry = all.find(c => c.dateKey === dateKey());
+    return todayEntry ? todayEntry.status : null;
+  });
+
+  function handleCheckIn(status) {
+    setSelected(status);
+    const { data, saved } = saveCheckInLS(status);
+    setCheckins(data);
+    if (!saved) {
+      setSaveError(true);
+      setTimeout(() => setSaveError(false), 4000);
+    }
+  }
+
+  function navigate(to) {
+    setPrevScreen(screen);
+    setScreen(to);
+  }
+
+  function handleOnboardComplete({ name, doctor, doctorPhone: dp, inhaler, ecName, ecPhone }) {
+    setPatientName(name);
+    setDoctorName(doctor);
+    if (dp)      setDoctorPhone(dp);
+    if (inhaler) setInhalerName(inhaler);
+    if (ecName || ecPhone) setEmergencyContact({ name: ecName, phone: ecPhone });
+    setHasOnboarded(true);
+  }
+
+  function handleSettingsSave({ name, doctor, doctorPhone: dp, inhaler, ecName, ecPhone }) {
+    if (name)    setPatientName(name);
+    if (doctor)  setDoctorName(doctor);
+    if (dp !== undefined) setDoctorPhone(dp);
+    if (inhaler) setInhalerName(inhaler);
+    setEmergencyContact({ name: ecName, phone: ecPhone });
+  }
+
+  // Slide direction based on screen order
+  const slideClass = !prevScreen ? 'screen-right' :
+    SCREEN_ORDER[screen] >= SCREEN_ORDER[prevScreen] ? 'screen-right' : 'screen-left';
+
+  if (!hasOnboarded) {
+    return <OnboardingScreen onComplete={handleOnboardComplete}/>;
+  }
+
+  if (screen === 'report') {
+    return (
+      <div className="wrap">
+        <div key="report" className={slideClass} style={{paddingBottom:80}}>
+          <ReportScreen onBack={() => navigate('home')} patientName={patientName} doctorName={doctorName} historyData={historyData}/>
+        </div>
+        <NavBar screen={screen} onNav={navigate}/>
+      </div>
+    );
+  }
+
+  if (screen === 'settings') {
+    return (
+      <div className="wrap">
+        <div key="settings" className={slideClass}>
+          <SettingsScreen
+            patientName={patientName} doctorName={doctorName}
+            doctorPhone={doctorPhone}
+            inhalerName={inhalerName} emergencyContact={emergencyContact}
+            onSave={handleSettingsSave}/>
+        </div>
+        <NavBar screen={screen} onNav={navigate}/>
+      </div>
+    );
+  }
+
+  if (screen === 'history') {
+    return (
+      <div className="wrap">
+        <div key="history" className={slideClass}>
+          {/* History header */}
+          <div style={{background:'var(--surface)',borderBottom:'1.5px solid var(--line)',
+                       padding:'20px 16px 16px',display:'flex',alignItems:'center',gap:14}}>
+            <div style={{width:40,height:40,borderRadius:13,
+                         background:'linear-gradient(140deg,rgba(26,111,168,.10),rgba(58,173,212,.07))',
+                         border:'1.5px solid rgba(26,111,168,.14)',
+                         display:'flex',alignItems:'center',justifyContent:'center'}}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+                   stroke="var(--hero-1)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="22,12 18,12 15,21 9,3 6,12 2,12"/>
+              </svg>
+            </div>
+            <div>
+              <p style={{fontSize:11,fontWeight:700,color:'var(--ink-soft)',textTransform:'uppercase',
+                         letterSpacing:'.08em',marginBottom:1}}>Breathing Journal</p>
+              <p style={{fontSize:20,fontWeight:800,color:'var(--ink)'}}>Your History</p>
+            </div>
+          </div>
+          <HistoryScreen historyData={historyData}/>
+        </div>
+        <NavBar screen={screen} onNav={navigate}/>
+      </div>
+    );
+  }
+
+  return (
+    <div className="wrap">
+      <div key="home" className={slideClass}>
+        <Header patientName={patientName}/>
+        <div style={{padding:'18px 16px 0',display:'flex',flexDirection:'column',gap:16}}>
+          <CheckInCard selected={selected} onSelect={handleCheckIn} onEmergency={() => setShowModal(true)}/>
+          {selected && selected !== 'red' && <ResponsePanel key={selected} status={selected} doctorPhone={doctorPhone}/>}
+          <MMRCCard/>
+          <MedSection/>
+          <PanicButton onTap={() => setShowPacer(true)}/>
+          {/* Weekly CAT score button */}
+          {(() => {
+            const catDue = catDaysSince() >= 7;
+            return (
+              <button onClick={() => setShowCAT(true)}
+                      style={{width:'100%',minHeight:56,borderRadius:18,
+                              background: catDue ? 'rgba(26,111,168,.06)' : 'var(--surface)',
+                              border: catDue ? '1.5px solid var(--hero-1)' : '1.5px solid var(--line)',
+                              display:'flex',alignItems:'center',gap:14,padding:'0 18px',cursor:'pointer'}}>
+                <div style={{width:36,height:36,borderRadius:11,flexShrink:0,
+                             background:'linear-gradient(140deg,var(--hero-1),var(--hero-3))',
+                             display:'flex',alignItems:'center',justifyContent:'center'}}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white"
+                       strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/>
+                  </svg>
+                </div>
+                <div style={{flex:1,textAlign:'left'}}>
+                  <p style={{fontSize:15,fontWeight:800,color:'var(--ink)',lineHeight:1.2}}>Weekly CAT Score</p>
+                  <p style={{fontSize:12,color: catDue ? 'var(--hero-1)' : 'var(--ink-soft)'}}>
+                    {catDue ? '⚡ Assessment due — tap to start' : 'COPD Assessment Test · completed'}
+                  </p>
+                </div>
+                {catDue
+                  ? <span style={{background:'var(--hero-1)',color:'white',borderRadius:10,
+                                  padding:'3px 10px',fontSize:12,fontWeight:800,flexShrink:0}}>DUE</span>
+                  : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--ink-soft)"
+                         strokeWidth="2" strokeLinecap="round"><polyline points="9 18 15 12 9 6"/></svg>
+                }
+              </button>
+            );
+          })()}
+        </div>
+        <Footer/>
+      </div>
+      <NavBar screen={screen} onNav={navigate}/>
+      {showModal && <EmergencyModal onClose={() => setShowModal(false)} emergencyContact={emergencyContact}/>}
+      {showPacer && <PacerOverlay   onClose={() => setShowPacer(false)}/>}
+      {showCAT   && <CATScoreModal  onClose={() => setShowCAT(false)}/>}
+      {saveError && (
+        <div className="fi" style={{position:'fixed',top:16,left:'50%',transform:'translateX(-50%)',
+          zIndex:80,background:'#1A1A1A',color:'white',borderRadius:14,padding:'12px 20px',
+          display:'flex',alignItems:'center',gap:10,boxShadow:'0 8px 24px rgba(0,0,0,.35)',
+          maxWidth:340,width:'calc(100% - 32px)'}}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#F5A623" strokeWidth="2.5" strokeLinecap="round"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><circle cx="12" cy="17" r="1" fill="#F5A623" stroke="none"/></svg>
+          <p style={{fontSize:14,fontWeight:600,lineHeight:1.4}}>Could not save check-in — storage may be full or unavailable.</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
