@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="robots" content="noindex, nofollow"/>
   <title>Respiro — Daily Breathing Check</title>
 
   <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
@@ -85,6 +86,7 @@
       flex: 1; display: flex; flex-direction: column; align-items: center;
       justify-content: center; gap: 4px;
       padding: 10px 4px 13px;
+      min-height: 56px;
       background: none; border: none;
       font-size: 14px; font-weight: 700; letter-spacing: .02em;
       font-family: inherit;
@@ -141,8 +143,9 @@
       body  { background: white !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
       .nav-bar, .no-print, [role="dialog"] { display: none !important; }
       .wrap { max-width: 100% !important; border-radius: 0 !important; box-shadow: none !important; padding-bottom: 0 !important; }
-      /* Keep background colours in card blocks */
       * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      .report-cards > * { page-break-inside: avoid; break-inside: avoid; margin-bottom: 12px; }
+      .print-only { display: block !important; }
     }
   </style>
 </head>
@@ -236,6 +239,22 @@ function dateKey(d) {
 function loadCheckIns() {
   try { return JSON.parse(localStorage.getItem('resp_checkins') || '[]'); } catch(e) { return []; }
 }
+function sanitizePhone(raw) {
+  const cleaned = (raw || '').replace(/[^\d+\-() ]/g, '').trim();
+  return cleaned.length >= 7 ? cleaned : '';
+}
+function pruneOldKeys() {
+  try {
+    const cutoff = new Date(); cutoff.setDate(cutoff.getDate() - 30);
+    const cutoffKey = dateKey(cutoff);
+    Object.keys(localStorage)
+      .filter(k => (k.startsWith('resp_rescue_') && k.slice('resp_rescue_'.length) < cutoffKey)
+                || (k.startsWith('resp_meds_')    && k.slice('resp_meds_'.length)    < cutoffKey))
+      .forEach(k => localStorage.removeItem(k));
+  } catch(e) {}
+}
+pruneOldKeys();
+
 function saveCheckInLS(status) {
   const all = loadCheckIns();
   const key = dateKey();
@@ -303,6 +322,16 @@ function Header({ patientName = 'Dorothy' }) {
 
       {/* Top gradient accent bar */}
       <div style={{height:4,background:'linear-gradient(90deg,var(--hero-1) 0%,var(--hero-2) 55%,var(--hero-3) 100%)'}}/>
+      {/* Hub back link */}
+      <a href="https://rongerso-wq.github.io/VitalHub/"
+         style={{position:'absolute',top:10,right:14,zIndex:10,
+                 background:'rgba(255,255,255,.92)',backdropFilter:'blur(8px)',
+                 border:'1px solid rgba(26,111,168,.15)',borderRadius:20,
+                 padding:'5px 12px',fontSize:12,fontWeight:700,
+                 color:'var(--hero-1)',textDecoration:'none',
+                 display:'flex',alignItems:'center',gap:4}}>
+        &#8592; VitalHub
+      </a>
 
       {/* Background lungs watermark */}
       <div style={{position:'absolute',right:-18,bottom:-14,opacity:.04,pointerEvents:'none',transform:'rotate(-8deg)'}}>
@@ -357,7 +386,10 @@ function Header({ patientName = 'Dorothy' }) {
             👋
           </div>
           <div style={{flex:1}}>
-            <p style={{fontSize:14,fontWeight:600,color:'var(--ink-soft)',marginBottom:2}}>Good Morning</p>
+            <p style={{fontSize:14,fontWeight:600,color:'var(--ink-soft)',marginBottom:2}}>{
+              (() => { const h = new Date().getHours();
+                return h < 12 ? 'Good Morning' : h < 18 ? 'Good Afternoon' : h < 22 ? 'Good Evening' : 'Good Night'; })()
+            }</p>
             <p style={{fontSize:28,fontWeight:800,color:'var(--ink)',letterSpacing:'-0.3px',lineHeight:1.1,marginBottom:4}}>
               {patientName}
             </p>
@@ -558,20 +590,21 @@ function ResponsePanel({ status, doctorPhone }) {
         ))}
         {!isGreen && (
           <div>
-            <a href={`tel:${doctorPhone || ''}`}
-               style={{display:'flex',alignItems:'center',justifyContent:'center',gap:10,
-                       marginTop:14,width:'100%',minHeight:54,background:'var(--caution)',
-                       color:'white',borderRadius:14,textDecoration:'none',
-                       fontSize:17,fontWeight:800,
-                       boxShadow:'0 6px 16px rgba(176,125,16,.35)'}}>
-              <Phone sz={20}/>Call My Doctor
-            </a>
-            {!doctorPhone && (
-              <p style={{fontSize:12,color:'var(--ink-soft)',textAlign:'center',marginTop:6,fontWeight:500}}>
-                Add your doctor's phone in Settings to enable quick-dial
-              </p>
-            )}
-            <p style={{fontSize:12,color:'var(--ink-soft)',marginTop:10,lineHeight:1.55,padding:'0 2px'}}>
+            {doctorPhone
+              ? <a href={`tel:${sanitizePhone(doctorPhone)}`} rel="noopener noreferrer"
+                   style={{display:'flex',alignItems:'center',justifyContent:'center',gap:10,
+                           marginTop:14,width:'100%',minHeight:54,background:'var(--caution)',
+                           color:'white',borderRadius:14,textDecoration:'none',
+                           fontSize:17,fontWeight:800,
+                           boxShadow:'0 6px 16px rgba(176,125,16,.35)'}}>
+                  <Phone sz={20}/>Call My Doctor
+                </a>
+              : <p style={{fontSize:13,color:'var(--ink-soft)',textAlign:'center',
+                           padding:'14px 0',fontWeight:600,marginTop:4}}>
+                  Add your doctor's phone in Settings to enable quick-dial
+                </p>
+            }
+            <p style={{fontSize:14,fontWeight:600,color:'var(--ink)',marginTop:10,lineHeight:1.55,padding:'0 2px'}}>
               <strong>SpO₂ note:</strong> For COPD, 88–92% may be your normal range — targeting 95%+ can be harmful. Ask your doctor for your personal target.
             </p>
           </div>
@@ -586,12 +619,19 @@ function ResponsePanel({ status, doctorPhone }) {
 ════════════════════════════════════════════════════ */
 function EmergencyModal({ onClose, emergencyContact }) {
   const btn911Ref = useRef(null);
+  const [countdown, setCountdown] = useState(3);
+  const canDismiss = countdown === 0;
   useEffect(() => {
     if (btn911Ref.current) btn911Ref.current.focus();
     const onKey = (e) => { if (e.key === 'Escape') onClose(); };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, []);
+  useEffect(() => {
+    if (countdown <= 0) return;
+    const t = setTimeout(() => setCountdown(c => c - 1), 1000);
+    return () => clearTimeout(t);
+  }, [countdown]);
 
   return (
     <div className="fi" role="alertdialog" aria-modal="true" aria-labelledby="em-title"
@@ -626,7 +666,7 @@ function EmergencyModal({ onClose, emergencyContact }) {
           <Phone sz={26}/>Call 911
         </a>
         {emergencyContact && emergencyContact.phone && (
-          <a href={`tel:${emergencyContact.phone}`}
+          <a href={`tel:${sanitizePhone(emergencyContact.phone)}`} rel="noopener noreferrer"
              style={{display:'flex',alignItems:'center',justifyContent:'center',gap:12,
                      width:'100%',minHeight:64,background:'var(--caution-bg)',color:'var(--caution)',
                      borderRadius:20,textDecoration:'none',fontSize:18,fontWeight:800,
@@ -641,10 +681,11 @@ function EmergencyModal({ onClose, emergencyContact }) {
             While waiting: breathe in 2 sec → purse lips → breathe out slowly 4 sec
           </p>
         </div>
-        <button onClick={onClose}
+        <button onClick={canDismiss ? onClose : undefined} disabled={!canDismiss}
                 style={{width:'100%',minHeight:52,background:'transparent',border:'1.5px solid var(--line)',
-                        borderRadius:15,color:'var(--ink-soft)',fontSize:16,fontWeight:600}}>
-          I've Called — Dismiss
+                        borderRadius:15,color:'var(--ink-soft)',fontSize:16,fontWeight:600,fontFamily:'inherit',
+                        opacity: canDismiss ? 1 : 0.45, cursor: canDismiss ? 'pointer' : 'default'}}>
+          {canDismiss ? "I've Called — Dismiss" : `Dismiss (${countdown}…)`}
         </button>
       </div>
     </div>
@@ -696,7 +737,14 @@ function RescueCounter() {
 
 function MedSection() {
   const [expandedIdx, setExpandedIdx] = useState(null);
-  const [takenState,  setTakenState]  = useState({ 0:true, 1:false, 2:false });
+  const todayMedKey = `resp_meds_${dateKey()}`;
+  const [takenState, setTakenState] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(todayMedKey));
+      if (saved && typeof saved === 'object') return saved;
+    } catch(e) {}
+    return { 0: MEDS[0].taken, 1: MEDS[1].taken, 2: MEDS[2].taken };
+  });
 
   const takenCount  = Object.values(takenState).filter(Boolean).length;
   const totalMaint  = MEDS.filter(m => m.type==='Maintenance').length;
@@ -793,7 +841,11 @@ function MedSection() {
                     Tip
                   </button>
                   {med.type !== 'As needed' && !taken && (
-                    <button onClick={() => setTakenState(p => ({...p,[i]:true}))}
+                    <button onClick={() => {
+                              const next = {...takenState, [i]: true};
+                              setTakenState(next);
+                              try { localStorage.setItem(todayMedKey, JSON.stringify(next)); } catch(e) {}
+                            }}
                             style={{minHeight:48,padding:'0 14px',borderRadius:12,
                                     background:'var(--calm)',border:'none',
                                     fontSize:15,fontWeight:700,color:'white',
@@ -858,7 +910,7 @@ function PanicButton({ onTap }) {
                         display:'flex',alignItems:'center',justifyContent:'center',gap:12,
                         fontSize:20,fontWeight:900}}>
           <Lungs sz={26} c="white" sw={1.6}/>
-          Tap Here to Calm Down
+          Start Breathing Exercise
         </button>
       </div>
     </div>
@@ -910,7 +962,7 @@ function PacerOverlay({ onClose }) {
     <div className="fi" style={{position:'fixed',inset:0,zIndex:70,background:'rgba(8,16,28,.92)',
                                 display:'flex',flexDirection:'column',alignItems:'center',
                                 justifyContent:'center',padding:24}}>
-      <button onClick={onClose}
+      <button onClick={onClose} aria-label="Close breathing exercise"
               style={{position:'absolute',top:18,right:18,width:52,height:52,borderRadius:15,
                       background:'rgba(255,255,255,.14)',border:'none',
                       display:'flex',alignItems:'center',justifyContent:'center'}}>
@@ -1000,6 +1052,11 @@ function PacerOverlay({ onClose }) {
 ════════════════════════════════════════════════════ */
 function ReportScreen({ onBack, patientName, doctorName, historyData }) {
   const d = REPORT_DATA;
+  const _now = new Date();
+  const _start = new Date(_now); _start.setDate(_now.getDate() - 29);
+  const _fmt = dt => dt.toLocaleDateString('en-US', {month:'short', day:'numeric'});
+  const period = `${_fmt(_start)} – ${_fmt(_now)}, ${_now.getFullYear()}`;
+  const printDate = _now.toLocaleDateString('en-US', {year:'numeric', month:'long', day:'numeric'});
 
   // Read latest CAT + mMRC from localStorage
   const lastCAT = (() => { try { return JSON.parse(localStorage.getItem('resp_cat')); } catch(e) { return null; } })();
@@ -1055,7 +1112,10 @@ function ReportScreen({ onBack, patientName, doctorName, historyData }) {
           <div>
             <p style={{fontSize:13,fontWeight:600,color:'rgba(255,255,255,.7)',marginBottom:2}}>30-Day Summary</p>
             <h2 style={{fontSize:22,fontWeight:800,letterSpacing:'-0.3px'}}>Doctor's Report</h2>
-            <p style={{fontSize:13,fontWeight:500,color:'rgba(255,255,255,.7)',marginTop:2}}>{d.period}</p>
+            <p style={{fontSize:13,fontWeight:500,color:'rgba(255,255,255,.7)',marginTop:2}}>{period}</p>
+            <p className="print-only" style={{display:'none',fontSize:12,color:'rgba(255,255,255,.55)',marginTop:3}}>
+              Generated {printDate}
+            </p>
           </div>
           <div style={{marginLeft:'auto',flexShrink:0}}>
             <FileIcon sz={32} c="rgba(255,255,255,.5)"/>
@@ -1063,7 +1123,7 @@ function ReportScreen({ onBack, patientName, doctorName, historyData }) {
         </div>
       </div>
 
-      <div style={{padding:'18px 16px',display:'flex',flexDirection:'column',gap:16}}>
+      <div className="report-cards" style={{padding:'18px 16px',display:'flex',flexDirection:'column',gap:16}}>
 
         {/* Patient info */}
         <div style={{background:'var(--surface)',borderRadius:'var(--rc)',boxShadow:'var(--sh)',
@@ -1216,6 +1276,11 @@ function ReportScreen({ onBack, patientName, doctorName, historyData }) {
           Simulated demo data · not a certified medical report<br/>
           For clinical decisions, consult actual EHR records
         </p>
+        <p className="print-only" style={{display:'none',textAlign:'center',fontSize:11,
+                   color:'var(--ink-soft)',borderTop:'1px solid var(--line)',
+                   paddingTop:12,marginTop:4,lineHeight:1.6}}>
+          Respiro COPD Companion · {printDate}
+        </p>
       </div>
     </div>
   );
@@ -1226,10 +1291,21 @@ function ReportScreen({ onBack, patientName, doctorName, historyData }) {
 ════════════════════════════════════════════════════ */
 function Footer() {
   return (
-    <p style={{textAlign:'center',fontSize:13,fontWeight:500,color:'var(--ink-soft)',
-               padding:'16px 20px 4px',lineHeight:1.6,opacity:.7}}>
-      Concept demo · not a medical device<br/>Call 911 in an emergency
-    </p>
+    <div style={{textAlign:'center',padding:'16px 20px 8px'}}>
+      <p style={{fontSize:13,fontWeight:500,color:'var(--ink-soft)',lineHeight:1.6,opacity:.7,marginBottom:10}}>
+        Concept demo · not a medical device<br/>Call 911 in an emergency
+      </p>
+      <p style={{fontSize:10,fontWeight:800,letterSpacing:2,textTransform:'uppercase',
+                 color:'var(--ink-soft)',opacity:.7,marginBottom:4}}>Created by</p>
+      <p style={{fontStyle:'italic',fontSize:15,fontWeight:700,letterSpacing:'.3px',
+                 background:'linear-gradient(100deg,var(--hero-1),var(--hero-2) 55%,#2E5A8F)',
+                 WebkitBackgroundClip:'text',backgroundClip:'text',
+                 WebkitTextFillColor:'transparent',color:'transparent',padding:'0 2px'}}>
+        Dr. Roni Gershonovitch{' '}
+        <span style={{fontStyle:'normal',opacity:.6,WebkitTextFillColor:'var(--ink-soft)',color:'var(--ink-soft)'}}>&amp;</span>{' '}
+        Dr. Gal Lavie
+      </p>
+    </div>
   );
 }
 
@@ -1333,7 +1409,7 @@ function OnboardingScreen({ onComplete }) {
                 Contact Name
               </label>
               <input id="ob-ec-name" className="ob-input" type="text" autoComplete="name"
-                placeholder="e.g. Sarah (daughter)"
+                placeholder="e.g. Sarah (daughter)" maxLength={80}
                 value={ecName} onChange={e => setEcName(e.target.value)} autoFocus/>
             </div>
             <div>
@@ -1342,7 +1418,7 @@ function OnboardingScreen({ onComplete }) {
                 Phone Number
               </label>
               <input id="ob-ec-phone" className="ob-input" type="tel" autoComplete="tel"
-                placeholder="e.g. 555-123-4567"
+                placeholder="e.g. 555-123-4567" maxLength={20}
                 value={ecPhone} onChange={e => setEcPhone(e.target.value)}
                 onKeyDown={e => e.key==='Enter' && handleNext()}/>
             </div>
@@ -1355,6 +1431,7 @@ function OnboardingScreen({ onComplete }) {
             aria-labelledby="ob-question"
             autoComplete={current.inputType === 'tel' ? 'tel' : 'off'}
             placeholder={current.placeholder}
+            maxLength={current.inputType === 'tel' ? 20 : 80}
             value={current.value}
             onChange={e => current.onChange(e.target.value)}
             onKeyDown={e => e.key==='Enter' && canNext && handleNext()}
@@ -1637,7 +1714,8 @@ function SettingsScreen({ patientName, doctorName, inhalerName, emergencyContact
         <label htmlFor={id} style={{display:'block',fontSize:12,fontWeight:700,color:'var(--ink-soft)',
                    textTransform:'uppercase',letterSpacing:'.07em',marginBottom:8}}>{label}</label>
         <input id={id} type={type} value={value} onChange={e=>onChange(e.target.value)}
-               placeholder={placeholder} autoComplete={type==='tel' ? 'tel' : type==='email' ? 'email' : 'off'}
+               placeholder={placeholder} maxLength={type==='tel' ? 20 : 80}
+               autoComplete={type==='tel' ? 'tel' : type==='email' ? 'email' : 'off'}
                style={{width:'100%',fontSize:18,fontWeight:600,color:'var(--ink)',fontFamily:'inherit',
                        background:'var(--bg)',border:'1.5px solid var(--line)',borderRadius:14,
                        padding:'14px 16px',outline:'none',boxSizing:'border-box',
@@ -1777,19 +1855,30 @@ function CATScoreModal({ onClose, onSave }) {
         </div>
 
         {CAT_QUESTIONS.map((q, i) => (
-          <div key={i} style={{marginBottom:18}}>
-            <div style={{display:'flex',justifyContent:'space-between',marginBottom:4}}>
-              <span style={{fontSize:13,fontWeight:700,color:'var(--ink)'}}>{q.q}</span>
-              <span style={{fontSize:13,fontWeight:800,color:'var(--hero-1)'}}>{scores[i]} / 5</span>
+          <div key={i} style={{marginBottom:22}}>
+            <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',marginBottom:6}}>
+              <span style={{fontSize:15,fontWeight:700,color:'var(--ink)'}}>{q.q}</span>
+              <span style={{fontSize:14,fontWeight:800,color:'var(--hero-1)'}}>{scores[i]} / 5</span>
             </div>
-            <div style={{display:'flex',justifyContent:'space-between',marginBottom:6}}>
-              <span style={{fontSize:11,color:'var(--ink-soft)',maxWidth:'44%',lineHeight:1.4}}>{q.lo}</span>
-              <span style={{fontSize:11,color:'var(--ink-soft)',maxWidth:'44%',lineHeight:1.4,textAlign:'right'}}>{q.hi}</span>
+            <div style={{display:'flex',justifyContent:'space-between',marginBottom:10}}>
+              <span style={{fontSize:12,color:'var(--ink-soft)',maxWidth:'44%',lineHeight:1.4}}>{q.lo}</span>
+              <span style={{fontSize:12,color:'var(--ink-soft)',maxWidth:'44%',lineHeight:1.4,textAlign:'right'}}>{q.hi}</span>
             </div>
-            <input type="range" min="0" max="5" step="1" value={scores[i]}
-                   onChange={e => setScores(prev => { const n=[...prev]; n[i]=+e.target.value; return n; })}
-                   aria-label={`${q.q}: ${scores[i]} out of 5`}
-                   style={{width:'100%',accentColor:'var(--hero-1)',cursor:'pointer'}}/>
+            <div style={{display:'grid',gridTemplateColumns:'repeat(6,1fr)',gap:6}}
+                 role="group" aria-label={`${q.q}: select 0 to 5`}>
+              {[0,1,2,3,4,5].map(v => (
+                <button key={v}
+                  onClick={() => setScores(prev => { const n=[...prev]; n[i]=v; return n; })}
+                  aria-pressed={scores[i]===v}
+                  style={{minHeight:48,borderRadius:10,border:'1.5px solid',fontFamily:'inherit',
+                          fontSize:17,fontWeight:800,cursor:'pointer',transition:'background .12s,color .12s',
+                          borderColor: scores[i]===v ? 'var(--hero-1)' : 'var(--line)',
+                          background:  scores[i]===v ? 'var(--hero-1)' : 'var(--surface)',
+                          color:       scores[i]===v ? 'white'         : 'var(--ink)'}}>
+                  {v}
+                </button>
+              ))}
+            </div>
           </div>
         ))}
 
